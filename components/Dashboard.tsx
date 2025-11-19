@@ -1,98 +1,183 @@
+
 import React, { useEffect, useState } from 'react';
-import { Activity, Target, FileText, Send, TrendingUp } from 'lucide-react';
+import { Activity, Target, FileText, Send, TrendingUp, Clock, CheckSquare, Settings, RotateCcw, CalendarDays, ExternalLink } from 'lucide-react';
 import { USER_PROFILE } from '../constants';
-import { getStats } from '../services/storageService';
+import { getStats, getVisaDetails, saveVisaDetails } from '../services/storageService';
+import { VisaDetails } from '../types';
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState({ total: 0, interviewing: 0, applied: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, interviewing: 0, applied: 0, rejected: 0, offers: 0 });
+  const [visa, setVisa] = useState<VisaDetails>(getVisaDetails());
+  const [showVisaSettings, setShowVisaSettings] = useState(false);
 
   useEffect(() => {
     setStats(getStats());
   }, []);
 
+  const handleVisaUpdate = (key: keyof VisaDetails['documentsReady']) => {
+      const updated = { ...visa, documentsReady: { ...visa.documentsReady, [key]: !visa.documentsReady[key] }};
+      setVisa(updated);
+      saveVisaDetails(updated);
+  }
+
+  const resetVisaTimer = () => {
+      const updated = { ...visa, entryDate: new Date().toISOString().split('T')[0] };
+      setVisa(updated);
+      saveVisaDetails(updated);
+      setShowVisaSettings(false);
+  }
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const updated = { ...visa, entryDate: e.target.value };
+      setVisa(updated);
+      saveVisaDetails(updated);
+  }
+
+  const daysRemaining = () => {
+      const entry = new Date(visa.entryDate);
+      const deadline = new Date(entry.setDate(entry.getDate() + visa.visaDurationDays));
+      const diff = deadline.getTime() - new Date().getTime();
+      return Math.ceil(diff / (1000 * 3600 * 24));
+  }
+
+  const daysLeft = daysRemaining();
+  const visaColor = daysLeft > 30 ? 'text-emerald-400' : daysLeft > 15 ? 'text-orange-400' : 'text-red-500';
+  const progressColor = daysLeft > 30 ? 'bg-emerald-500' : daysLeft > 15 ? 'bg-orange-500' : 'bg-red-500';
+
   return (
-    <div className="p-8 space-y-8">
-      <header className="flex justify-between items-end">
+    <div className="p-8 space-y-8 overflow-y-auto h-screen pb-20">
+      <header className="flex justify-between items-end border-b border-zinc-800 pb-6">
         <div>
-          <h2 className="text-3xl font-bold text-white">Welcome back, Abdul</h2>
-          <p className="text-slate-400 mt-2">Your automated career agents are standing by.</p>
-        </div>
-        <div className="flex gap-4">
-           <span className="px-3 py-1 rounded-full bg-blue-900/30 text-blue-400 text-xs font-mono border border-blue-800">
-             LOC: {USER_PROFILE.location}
-           </span>
-           <span className="px-3 py-1 rounded-full bg-purple-900/30 text-purple-400 text-xs font-mono border border-purple-800">
-             VISA: Visit
-           </span>
+          <h2 className="text-3xl font-bold text-white tracking-tight">Mission Control</h2>
+          <p className="text-zinc-500 mt-1 font-mono text-xs">SYSTEM STATUS: ONLINE</p>
         </div>
       </header>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-dark-card border border-dark-border p-6 rounded-xl">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-slate-400 text-sm">Total Applications</p>
-              <h3 className="text-2xl font-bold text-white mt-1">{stats.total}</h3>
-            </div>
-            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
-              <Target size={20} />
-            </div>
-          </div>
-          <p className="text-xs text-green-400 mt-4">Tracked in system</p>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* VISA WIDGET */}
+          <div className="lg:col-span-1 bg-dark-card border border-dark-border p-6 rounded-xl shadow-sm relative group">
+              <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-2">
+                      <div className="p-2 bg-zinc-800 rounded-lg text-brand-500">
+                        <Clock size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-white text-sm">Visa Timeline</h3>
+                        <p className="text-[10px] text-zinc-500">Visit Visa (UAE)</p>
+                      </div>
+                  </div>
+                  <button onClick={() => setShowVisaSettings(!showVisaSettings)} className="text-zinc-600 hover:text-white transition-colors">
+                      <Settings size={16}/>
+                  </button>
+              </div>
 
-        <div className="bg-dark-card border border-dark-border p-6 rounded-xl">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-slate-400 text-sm">Applied</p>
-              <h3 className="text-2xl font-bold text-white mt-1">{stats.applied}</h3>
-            </div>
-            <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
-              <FileText size={20} />
-            </div>
+              {showVisaSettings ? (
+                  <div className="bg-zinc-900 rounded-lg p-4 mb-4 border border-zinc-800 space-y-3 animate-in fade-in slide-in-from-top-2">
+                      <div>
+                          <label className="text-xs text-zinc-500 block mb-1">Start Date</label>
+                          <input 
+                            type="date" 
+                            value={visa.entryDate} 
+                            onChange={handleDateChange}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:border-brand-500 outline-none"
+                          />
+                      </div>
+                      <button 
+                        onClick={resetVisaTimer}
+                        className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded transition-colors"
+                      >
+                          <RotateCcw size={12}/> Reset to Today
+                      </button>
+                  </div>
+              ) : (
+                  <>
+                    <div className="flex items-baseline gap-1 mb-4">
+                        <span className={`text-4xl font-bold ${visaColor}`}>{daysLeft}</span>
+                        <span className="text-zinc-500 text-sm">days remaining</span>
+                    </div>
+                    <div className="w-full bg-zinc-800 h-1.5 rounded-full mb-6 overflow-hidden">
+                        <div className={`h-full ${progressColor} transition-all duration-1000 rounded-full`} style={{width: `${Math.max(0, Math.min(100, (daysLeft / visa.visaDurationDays) * 100))}%`}}></div>
+                    </div>
+                  </>
+              )}
+              
+              <div className="space-y-3">
+                  <h4 className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Readiness Checklist</h4>
+                  {Object.entries(visa.documentsReady).map(([key, isReady]) => (
+                      <div key={key} onClick={() => handleVisaUpdate(key as any)} className="flex items-center gap-3 cursor-pointer group/item">
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isReady ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-700 group-hover/item:border-brand-500'}`}>
+                              {isReady && <CheckSquare size={10} className="text-white"/>}
+                          </div>
+                          <span className={`text-xs font-medium ${isReady ? 'text-zinc-500 line-through' : 'text-zinc-300'}`}>
+                              {key.replace(/([A-Z])/g, ' $1').trim()}
+                          </span>
+                      </div>
+                  ))}
+              </div>
           </div>
-           <p className="text-xs text-slate-500 mt-4">Pending response</p>
-        </div>
 
-        <div className="bg-dark-card border border-dark-border p-6 rounded-xl">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-slate-400 text-sm">Interviewing</p>
-              <h3 className="text-2xl font-bold text-white mt-1">{stats.interviewing}</h3>
-            </div>
-            <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500">
-              <Send size={20} />
-            </div>
-          </div>
-          <p className="text-xs text-green-400 mt-4">Active conversations</p>
-        </div>
+          {/* MAIN STATS */}
+          <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+             <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
+                 <div className="flex justify-between items-start">
+                     <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg"><FileText size={20}/></div>
+                     <span className="text-zinc-500 text-[10px] uppercase font-bold">Total Apps</span>
+                 </div>
+                 <div className="mt-4">
+                    <div className="text-3xl font-bold text-white">{stats.total}</div>
+                    <div className="text-xs text-zinc-500 mt-1">Applications sent</div>
+                 </div>
+             </div>
+             
+             <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
+                 <div className="flex justify-between items-start">
+                     <div className="p-2 bg-orange-500/10 text-orange-500 rounded-lg"><Send size={20}/></div>
+                     <span className="text-zinc-500 text-[10px] uppercase font-bold">Active</span>
+                 </div>
+                 <div className="mt-4">
+                    <div className="text-3xl font-bold text-white">{stats.interviewing}</div>
+                    <div className="text-xs text-zinc-500 mt-1">In progress</div>
+                 </div>
+             </div>
 
-        <div className="bg-dark-card border border-dark-border p-6 rounded-xl">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-slate-400 text-sm">Profile Views</p>
-              <h3 className="text-2xl font-bold text-white mt-1">150%</h3>
-            </div>
-            <div className="p-2 bg-green-500/10 rounded-lg text-green-500">
-              <TrendingUp size={20} />
-            </div>
+             <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
+                 <div className="flex justify-between items-start">
+                     <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg"><Target size={20}/></div>
+                     <span className="text-zinc-500 text-[10px] uppercase font-bold">Offers</span>
+                 </div>
+                 <div className="mt-4">
+                    <div className="text-3xl font-bold text-white">{stats.offers}</div>
+                    <div className="text-xs text-zinc-500 mt-1">Secured</div>
+                 </div>
+             </div>
+
+             <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
+                 <div className="flex justify-between items-start">
+                     <div className="p-2 bg-brand-500/10 text-brand-500 rounded-lg"><TrendingUp size={20}/></div>
+                     <span className="text-zinc-500 text-[10px] uppercase font-bold">Momentum</span>
+                 </div>
+                 <div className="mt-4">
+                    <div className="text-3xl font-bold text-white">High</div>
+                    <div className="text-xs text-zinc-500 mt-1">Market response</div>
+                 </div>
+             </div>
           </div>
-          <p className="text-xs text-slate-500 mt-4">Based on historic data</p>
-        </div>
       </div>
 
       {/* Active Portfolios */}
       <div className="bg-dark-card border border-dark-border rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-           <Activity size={18} className="text-brand-500"/> Active Portfolios
+        <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
+           <Activity size={16} className="text-brand-500"/> Live Portfolios
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {Object.entries(USER_PROFILE.websites).map(([key, url]) => (
                 <a href={url} target="_blank" rel="noreferrer" key={key} className="block group">
-                    <div className="p-4 rounded-lg border border-dark-border bg-slate-900/50 hover:border-brand-500/50 transition-colors">
-                        <div className="text-xs font-mono text-slate-500 mb-1 uppercase">{key}</div>
-                        <div className="text-sm text-brand-400 truncate group-hover:text-brand-300">{url}</div>
+                    <div className="p-4 rounded-lg border border-dark-border bg-zinc-900/50 hover:bg-zinc-900 hover:border-brand-500/50 transition-all">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{key.split(' ')[0]}</div>
+                            <ExternalLink size={12} className="text-zinc-600 group-hover:text-brand-500"/>
+                        </div>
+                        <div className="text-xs text-zinc-300 truncate group-hover:text-white">{url.replace('https://', '')}</div>
                     </div>
                 </a>
             ))}

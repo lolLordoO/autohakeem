@@ -21,13 +21,14 @@ export interface JobOpportunity {
   title: string;
   company: string;
   location: string;
-  source: string; // LinkedIn, Indeed, etc.
-  url?: string; // The scraping source URL
-  applyUrl?: string; // Specific apply link if found
-  applyEmail?: string; // Recruiter email if found
+  source: string; 
+  url?: string; 
+  search_query?: string; 
+  applyUrl?: string; 
+  applyEmail?: string; 
   description?: string;
   dateFound: string;
-  status: 'found' | 'applied' | 'interviewing' | 'rejected';
+  status: 'found' | 'applied' | 'interviewing' | 'rejected' | 'offer';
 }
 
 export interface RecruiterProfile {
@@ -38,8 +39,10 @@ export interface RecruiterProfile {
   phone?: string;
   linkedin?: string;
   source?: string;
-  profileSnippet?: string; // New bio field
+  profileSnippet?: string;
+  category?: 'A' | 'B' | 'C'; // A: Active/Tech, B: General, C: Corporate/Slow
   contacted?: boolean;
+  lastContactDate?: string;
 }
 
 export interface AgencyProfile {
@@ -66,21 +69,69 @@ export interface ApplicationRecord extends JobOpportunity {
   applicationMaterials: GeneratedContent;
   method: 'Email' | 'LinkedIn' | 'Portal';
   notes?: string;
+  offerDetails?: OfferEvaluation;
 }
 
 export interface InteractionRecord {
   id: string;
-  name: string; // Agency Name or Recruiter Name
+  name: string; 
   targetType: 'Agency' | 'Recruiter';
   date: string;
-  details: string; // Email used or LinkedIn URL
+  details: string; 
   status: 'Contacted';
 }
 
-export interface AgentLog {
+// --- NEW MODULE TYPES ---
+
+export interface MarketSignal {
   id: string;
-  timestamp: Date;
-  agent: 'Search' | 'Application' | 'Outreach';
-  message: string;
-  details?: string;
+  company: string;
+  signalType: 'Funding' | 'Expansion' | 'Hiring Spree' | 'Product Launch';
+  summary: string;
+  dateDetected: string;
+  actionableLeads: string[]; // Names of roles to target (e.g. "CTO", "Head of Product")
+}
+
+export interface TechEvent {
+  id: string;
+  name: string;
+  date: string;
+  location: string;
+  type: 'Meetup' | 'Conference' | 'Workshop';
+  url?: string;
+  keyAttendees?: string[];
+}
+
+export interface VisaDetails {
+  entryDate: string;
+  visaDurationDays: number; // e.g., 60 or 90
+  documentsReady: {
+      passport: boolean;
+      photo: boolean;
+      attestedDegree: boolean;
+      insurance: boolean;
+  };
+}
+
+export interface SentimentAnalysis {
+  sentiment: 'Positive' | 'Neutral' | 'Negative' | 'Blunt';
+  suggestedTone: 'Enthusiastic' | 'Professional' | 'Concise' | 'Persuasive';
+  analysis: string;
+  draftReply: string;
+}
+
+export interface OfferEvaluation {
+  salary: number;
+  currency: string;
+  benefitsScore: number; // 1-10
+  commuteMinutes: number;
+  growthPotential: number; // 1-10
+  totalScore: number; // 0-100
+  recommendation: string;
+}
+
+// State Types
+export interface JobSearchState {
+    results: JobOpportunity[];
+    query: string;
 }

@@ -1,16 +1,14 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation } from "../types";
 
-// Initialize Gemini Client
 const getClient = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error("API Key missing");
   return new GoogleGenAI({ apiKey });
 };
 
-// Helper to parse JSON from potentially markdown-wrapped text
 const cleanAndParseJSON = (text: string) => {
   try {
     let cleaned = text.replace(/```json\n?|```/g, '').trim();
@@ -23,77 +21,57 @@ const cleanAndParseJSON = (text: string) => {
 
         if (start > -1) {
              const isArray = cleaned[start] === '[';
-             const end = isArray ? cleaned.lastIndexOf(']') : cleaned.lastIndexOf('}');
+             let depth = 0;
+             let end = -1;
+             const openChar = isArray ? '[' : '{';
+             const closeChar = isArray ? ']' : '}';
+             for (let i = start; i < cleaned.length; i++) {
+                 if (cleaned[i] === openChar) depth++;
+                 else if (cleaned[i] === closeChar) depth--;
+                 if (depth === 0) { end = i; break; }
+             }
              if (end > start) cleaned = cleaned.substring(start, end + 1);
         }
     }
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("Failed to parse JSON from model response:", text);
+    console.error("JSON Parse Error:", text);
     return []; 
   }
 };
+
+// --- EXISTING SEARCH AGENTS ---
 
 export const analyzeProfileForSearch = async (): Promise<string> => {
   const ai = getClient();
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Analyze the following CV/Profile and generate the single most effective boolean search query to find relevant high-paying jobs specifically in the UAE.
-      
-      CV CONTEXT:
-      ${ABDUL_CV_TEXT}
-      
-      CRITERIA:
-      - Target roles: Marketing Strategist, Product Manager, AI/Web3 Specialist.
-      - Location Scope: STRICTLY United Arab Emirates (UAE), Dubai, Abu Dhabi, Sharjah, Ajman, Ras Al Khaimah, Fujairah, or Umm Al Quwain.
-      - Format: Use BOOLEAN logic to combine roles with these locations.
-      
-      OUTPUT:
-      Return ONLY the query string. No explanations.
-      Example: "(Marketing Strategist OR Product Manager) AND (AI OR Web3) AND (UAE OR Dubai OR Abu Dhabi OR Sharjah)"`
+      contents: `Analyze CV and generate ONE Boolean search query for UAE jobs. 
+      CV: ${ABDUL_CV_TEXT}
+      Criteria: Senior roles, Tech/AI/Marketing, UAE specific.
+      Output: Query string only.`
     });
-    return response.text?.trim().replace(/["']/g, "") || "Marketing Strategist AI UAE Dubai";
-  } catch (e) {
-    return "Marketing Strategist AI Web3 UAE Dubai";
-  }
+    return response.text?.trim().replace(/["']/g, "") || "Marketing Strategist AI UAE";
+  } catch (e) { return "Marketing Strategist AI UAE"; }
 };
 
 export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> => {
   const ai = getClient();
-  
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Find 20 recent job openings in the UAE (United Arab Emirates) related to: ${query}. 
+      contents: `Find 20 recent jobs in UAE (Dubai, Abu Dhabi, Sharjah) for: ${query}.
+      Strictly UAE only. Exclude: US, UK, India, Remote.
       
-      INSTRUCTIONS:
-      - Scour for roles in Tech, AI, Web3, and Marketing.
-      - Look for "Easy Apply" options or Direct Email applications if visible.
-      - Prioritize listings on LinkedIn, Indeed, Naukrigulf, and Company Career Pages.
+      CRITICAL INSTRUCTIONS: 
+      1. DO NOT HALLUCINATE URLS. If you cannot find a specific deep link, return null for "url".
+      2. Generate a precise "search_query" (e.g. "Marketing Manager Emirates Airlines Dubai careers") to find this specific job on Google.
+      3. Extract "applyEmail" only if explicitly visible.
       
-      CRITICAL FOR URLs:
-      - Provide VALID, CLICKABLE links to the job post.
-      - If a specific deep link isn't found, provide the main company careers page.
-      
-      STRICT OUTPUT FORMAT (JSON Array):
-      [
-        {
-          "title": "Job Title",
-          "company": "Company Name",
-          "location": "Location (Must be in UAE)",
-          "source": "Source (LinkedIn, Indeed, etc)",
-          "url": "Apply URL or Careers Page",
-          "applyUrl": "Direct Apply Link (if different)",
-          "applyEmail": "Recruiter Email (if found)",
-          "description": "Key requirements snippet (max 200 chars)"
-        }
-      ]`,
-      config: {
-        tools: [{ googleSearch: {} }],
-      }
+      Output JSON Array: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description" }]`,
+      config: { tools: [{ googleSearch: {} }] }
     });
-    
     const rawJobs = cleanAndParseJSON(response.text || "[]");
     if (!Array.isArray(rawJobs)) return [];
 
@@ -103,185 +81,229 @@ export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> 
       company: job.company,
       location: job.location || "UAE",
       source: job.source || "Web Search",
-      url: job.url,
-      applyUrl: job.applyUrl,
-      applyEmail: job.applyEmail,
+      url: job.url || null,
+      search_query: job.search_query || `${job.title} ${job.company} UAE careers`,
+      applyUrl: job.applyUrl || null,
+      applyEmail: job.applyEmail || null,
       description: job.description,
       dateFound: new Date().toISOString(),
       status: 'found'
     }));
-
-  } catch (error) {
-    console.error("Error searching jobs:", error);
-    return [];
-  }
+  } catch (e) { return []; }
 };
 
-export const generateApplicationMaterials = async (
-  jobDescription: string, 
-  persona: PersonaType
-): Promise<GeneratedContent> => {
-  const ai = getClient();
-  const website = USER_PROFILE.websites[persona];
+// --- INTELLIGENCE AGENTS (NEW) ---
 
-  const prompt = `
-    You are an expert Career Assistant for Abdul Hakeem.
-    
-    USER CONTEXT:
-    CV: ${ABDUL_CV_TEXT}
-    Portfolio: ${website}
-    Target Persona: ${persona}
-
-    TASK:
-    The user is applying for a job with the following description:
-    "${jobDescription.substring(0, 3000)}"
-
-    Generate application assets. 
-    - If this looks like an email application, write a subject line and email body.
-    - If this looks like a portal application, write a cover letter text.
-    
-    Tone: Professional, Confident, Results-Oriented.
-  `;
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: prompt,
-    config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                emailSubject: { type: Type.STRING },
-                coverLetter: { type: Type.STRING },
-                emailDraft: { type: Type.STRING },
-                linkedinMessage: { type: Type.STRING },
-                fitScore: { type: Type.INTEGER },
-                reasoning: { type: Type.STRING }
-            }
-        }
-    }
-  });
-
-  if (!response.text) throw new Error("No response from AI");
-  return JSON.parse(response.text);
-};
-
-export const findAgencies = async (excludedNames: string[] = []): Promise<AgencyProfile[]> => {
+export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     const ai = getClient();
-    const excludeStr = excludedNames.length > 0 ? `DO NOT include these agencies: ${excludedNames.join(', ')}.` : "";
-
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 10 recruitment agencies in UAE that specialize in Technology, Marketing, AI, and Crypto/Web3.
-            ${excludeStr}
+            contents: `Scan for recent (last 14 days) business news in the UAE regarding:
+            - Tech startups raising funding (Seed/Series A/B).
+            - Companies opening new HQs in Dubai/Abu Dhabi (DIFC/ADGM).
+            - Major product launches in AI, Web3, or Crypto.
             
-            CRITICAL: Find CONTACT DETAILS.
-            Look for:
-            1. General Inquiry or Careers Email
-            2. Office Phone Number
-            3. Website URL
+            STRICTLY REAL DATA ONLY. Verify sources (Gulf News, Khaleej Times, Wamda, LinkedIn).
             
-            STRICT OUTPUT FORMAT (JSON Array):
-            [
-                {
-                    "name": "Agency Name",
-                    "focus": "Specialization",
-                    "email": "email address (or 'Not found')",
-                    "phone": "phone (or 'Not found')",
-                    "website": "url (or 'Not found')",
-                    "location": "City"
-                }
-            ]`,
-            config: {
-                tools: [{ googleSearch: {} }],
-            }
+            Identify the company and the signal. 
+            Suggest who to contact (e.g. "CTO", "CMO", "Founder").
+            
+            JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1", "Role2"] }]`,
+            config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
-        return Array.isArray(data) ? data : [];
-    } catch (e) {
-        return [];
-    }
-}
+        return Array.isArray(data) ? data.map((s:any) => ({...s, id: Math.random().toString(), dateDetected: new Date().toISOString()})) : [];
+    } catch (e) { return []; }
+};
 
-export const draftAgencyOutreach = async (agency: AgencyProfile, persona: PersonaType): Promise<string> => {
+export const findTechEvents = async (): Promise<TechEvent[]> => {
     const ai = getClient();
-    const website = USER_PROFILE.websites[persona];
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Find upcoming Tech, AI, Web3, and Marketing events/meetups in Dubai and Abu Dhabi for the next 30 days.
+            Sources: Platinumlist, Eventbrite UAE, Meetup Dubai, DIFC/ADGM calendars.
+            
+            JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": ["Developers", "Investors", etc] }]`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        const data = cleanAndParseJSON(response.text || "[]");
+        return Array.isArray(data) ? data.map((e:any) => ({...e, id: Math.random().toString()})) : [];
+    } catch (e) { return []; }
+};
 
-    const prompt = `
-        Draft a cold outreach email to "${agency.name}" in UAE.
-        Sender: Abdul Hakeem (Sharjah, UAE, Immediate Joiner).
-        Role: ${persona}.
-        Portfolio: ${website}.
-        Highlights: 4+ years exp, $2M+ funding secured, AI/Web3.
-        Goal: Request CV review or meeting.
-    `;
-
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt
-    });
-
-    return response.text || "Could not generate email.";
-}
+// --- RECRUITER AGENTS ---
 
 export const findRecruiters = async (company: string, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
   const ai = getClient();
-  const excludeStr = excludedNames.length > 0 ? `DO NOT include these names: ${excludedNames.join(', ')}.` : "";
-
+  const excludeStr = excludedNames.length > 0 ? `Exclude: ${excludedNames.join(', ')}.` : "";
   try {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Find 5 specific Talent Acquisition Managers or Recruiters at ${company} in UAE/MENA.
-        ${excludeStr}
+        contents: `Find 5 Talent Acquisition/Recruiters at ${company} in UAE. ${excludeStr}.
         
-        CRITICAL: Find CONTACT DETAILS and PROFILE INFO.
-        - LinkedIn URL is priority #1.
-        - Email is priority #2.
-        - Write a short "profileSnippet" (2 sentences) about their background or focus based on search results.
+        CRITICAL:
+        1. DO NOT GUESS EMAILS. If not found, return null.
+        2. Prioritize LinkedIn URLs. If not found, return null.
+        3. Write a 2-sentence bio "profileSnippet".
         
-        STRICT OUTPUT FORMAT (JSON Array):
-        [
-            {
-                "name": "Full Name", 
-                "role": "Job Title", 
-                "company": "${company}",
-                "email": "email (or null)",
-                "phone": "phone (or null)",
-                "linkedin": "Full LinkedIn URL (or null)",
-                "source": "Source",
-                "profileSnippet": "Short professional bio..."
-            }
-        ]`,
-        config: {
-            tools: [{ googleSearch: {} }],
-        }
+        CATEGORIZE THEM:
+        "A": Active Tech/Product/AI hiring (High Priority)
+        "B": General Recruitment (Active but general)
+        "C": Corporate HR / Admin (Slow)
+        
+        JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category": "A"|"B"|"C" }]`,
+        config: { tools: [{ googleSearch: {} }] }
     });
-    const data = cleanAndParseJSON(response.text || "[]");
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.error(e);
-    return [];
-  }
+    return cleanAndParseJSON(response.text || "[]");
+  } catch (e) { return []; }
+};
+
+export const analyzeRecruiterReply = async (replyText: string): Promise<SentimentAnalysis> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Analyze this email from a recruiter:
+            "${replyText}"
+            
+            1. Determine Sentiment (Positive/Neutral/Negative/Blunt).
+            2. Suggest Response Tone.
+            3. Draft a response from Abdul Hakeem (Candidate).
+            
+            JSON Output: { "sentiment", "suggestedTone", "analysis", "draftReply" }`,
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) { return { sentiment: 'Neutral', suggestedTone: 'Professional', analysis: 'Error', draftReply: 'Error generating.' }; }
 };
 
 export const generateRecruiterMessage = async (recruiterName: string, company: string, persona: PersonaType): Promise<string> => {
     const ai = getClient();
     const website = USER_PROFILE.websites[persona];
-
-    const prompt = `
-        Draft a LinkedIn connection note (max 300 chars) AND a longer InMail message.
-        Recipient: ${recruiterName} at ${company}.
-        Sender: Abdul Hakeem.
-        Persona: ${persona}.
-        Portfolio: ${website}.
-        Highlights: 4+ years exp, $2M+ funding, AI/Web3.
-    `;
-
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt
+        contents: `Draft LinkedIn InMail for ${recruiterName} at ${company}. 
+        Sender: Abdul Hakeem (${persona}). Portfolio: ${website}. 
+        Highlights: $2M+ funding, AI/Web3 exp. UAE based.`
     });
-
-    return response.text || "Could not generate message.";
+    return response.text || "";
 };
+
+// --- AGENCY AGENTS ---
+
+export const findAgencies = async (excludedNames: string[] = []): Promise<AgencyProfile[]> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Find 10 UAE Recruitment Agencies (Tech/AI/Marketing). Exclude: ${excludedNames.join(',')}.
+            Find Email/Phone/Website.
+            JSON Output: [{ "name", "focus", "email", "phone", "website", "location" }]`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        return cleanAndParseJSON(response.text || "[]");
+    } catch (e) { return []; }
+}
+
+export const draftAgencyOutreach = async (agency: AgencyProfile, persona: PersonaType): Promise<string> => {
+    const ai = getClient();
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Draft cold email to ${agency.name} (UAE). Role: ${persona}. Highlights: $2M funding, AI exp. Goal: Meeting.`
+    });
+    return response.text || "";
+}
+
+// --- APPLICATION AGENTS ---
+
+export const recommendPersona = async (jobDescription: string): Promise<PersonaType> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Analyze this JD and select the best persona for Abdul Hakeem:
+            JD: "${jobDescription.substring(0, 500)}"
+            
+            Options:
+            1. MARKETING (Content, SEO, Growth)
+            2. PMO (Project Management, Agile, Scrum)
+            3. ULT (Hybrid, Founder-level, Strategy + Tech)
+            
+            Output ONLY the Enum string: "Marketing & Content", "Project Management", or "Ultimate / Hybrid".`
+        });
+        const text = response.text?.trim() || "";
+        if (text.includes("Marketing")) return PersonaType.MARKETING;
+        if (text.includes("Project")) return PersonaType.PMO;
+        return PersonaType.ULT;
+    } catch (e) { return PersonaType.ULT; }
+}
+
+export const generateApplicationMaterials = async (jobDescription: string, persona: PersonaType): Promise<GeneratedContent> => {
+  const ai = getClient();
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Generate Cover Letter & Email for Abdul Hakeem.
+        Persona: ${persona}. CV: ${ABDUL_CV_TEXT}.
+        JD: ${jobDescription.substring(0, 1000)}.
+        
+        MUST Include: Specific metrics ($2M funding, 40% MQLs, 150% traffic).
+        Tone: High-Agency, Professional.
+        
+        JSON Output: { "emailSubject", "coverLetter", "emailDraft", "fitScore", "reasoning" }`,
+        config: { responseMimeType: "application/json" }
+      });
+      return JSON.parse(response.text || "{}");
+  } catch (e) { 
+      return { 
+          emailSubject: "Application", coverLetter: "Error generating content. Please try again.", emailDraft: "Error", fitScore: 0, reasoning: "Error" 
+      }; 
+  }
+};
+
+export const refineContent = async (content: GeneratedContent, instruction: string): Promise<GeneratedContent> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Refine this JSON content based on: "${instruction}". JSON: ${JSON.stringify(content)}`,
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch(e) { return content; }
+};
+
+// --- CLOSING AGENTS ---
+
+export const generateInterviewBrief = async (job: JobOpportunity): Promise<string> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Create a 1-page Interview Cheat Sheet for: ${job.title} at ${job.company}.
+            Include:
+            1. Company Mission (Web Search).
+            2. Key Talking Points connecting Abdul's CV (Crypto $2M funding, AI) to their likely needs.
+            3. 3 Smart Questions to ask the interviewer.`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        return response.text || "Could not generate brief.";
+    } catch (e) { return "Error generating brief."; }
+}
+
+export const evaluateOffer = async (salary: string, location: string, benefits: string): Promise<OfferEvaluation> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Evaluate this job offer in UAE context:
+            Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
+            
+            Output JSON: { "salary": number, "currency": "AED", "benefitsScore": number(1-10), "commuteMinutes": number (estimate), "growthPotential": number (1-10), "totalScore": number, "recommendation": "string" }`,
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) { return { salary: 0, currency: 'AED', benefitsScore: 0, commuteMinutes: 0, growthPotential: 0, totalScore: 0, recommendation: 'Error' }; }
+}
