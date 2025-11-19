@@ -22,7 +22,9 @@ export interface JobOpportunity {
   company: string;
   location: string;
   source: string; // LinkedIn, Indeed, etc.
-  url?: string;
+  url?: string; // The scraping source URL
+  applyUrl?: string; // Specific apply link if found
+  applyEmail?: string; // Recruiter email if found
   description?: string;
   dateFound: string;
   status: 'found' | 'applied' | 'interviewing' | 'rejected';
@@ -36,6 +38,17 @@ export interface RecruiterProfile {
   phone?: string;
   linkedin?: string;
   source?: string;
+  profileSnippet?: string; // New bio field
+  contacted?: boolean;
+}
+
+export interface AgencyProfile {
+  name: string;
+  focus: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  location?: string;
 }
 
 export interface GeneratedContent {
@@ -45,6 +58,7 @@ export interface GeneratedContent {
   resumeSummary?: string;
   fitScore?: number;
   reasoning?: string;
+  emailSubject?: string;
 }
 
 export interface ApplicationRecord extends JobOpportunity {
@@ -52,6 +66,15 @@ export interface ApplicationRecord extends JobOpportunity {
   applicationMaterials: GeneratedContent;
   method: 'Email' | 'LinkedIn' | 'Portal';
   notes?: string;
+}
+
+export interface InteractionRecord {
+  id: string;
+  name: string; // Agency Name or Recruiter Name
+  targetType: 'Agency' | 'Recruiter';
+  date: string;
+  details: string; // Email used or LinkedIn URL
+  status: 'Contacted';
 }
 
 export interface AgentLog {

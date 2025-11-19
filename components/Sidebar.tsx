@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { LayoutDashboard, Search, Send, Briefcase, Settings, UserCircle, ListTodo } from 'lucide-react';
 
@@ -10,9 +11,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Mission Control', icon: LayoutDashboard },
     { id: 'search', label: 'Job Search Agent', icon: Search },
-    { id: 'apply', label: 'Auto-Apply Bot', icon: Briefcase },
-    { id: 'tracker', label: 'Application Tracker', icon: ListTodo },
-    { id: 'outreach', label: 'Recruiter Reachout', icon: Send },
+    { id: 'apply', label: 'Auto-Apply Assistant', icon: Briefcase },
+    { id: 'tracker', label: 'Trackers (Job/Net)', icon: ListTodo },
+    { id: 'outreach', label: 'Recruiter Outreach', icon: Send },
     { id: 'agencies', label: 'Agency Network', icon: UserCircle },
   ];
 

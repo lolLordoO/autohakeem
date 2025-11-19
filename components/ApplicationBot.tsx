@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save } from 'lucide-react';
+import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save, ArrowRight, Globe } from 'lucide-react';
 import { PersonaType, GeneratedContent, JobOpportunity } from '../types';
 import { generateApplicationMaterials } from '../services/geminiService';
 import { saveApplication } from '../services/storageService';
@@ -16,14 +17,20 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
   const [copied, setCopied] = useState<string | null>(null);
   const [isApplied, setIsApplied] = useState(false);
   const [recruiterEmail, setRecruiterEmail] = useState('');
+  
+  // Determine Mode
+  const hasDirectEmail = !!selectedJob?.applyEmail;
+  const hasApplyUrl = !!selectedJob?.applyUrl || !!selectedJob?.url;
+  const mode = hasDirectEmail ? 'Email' : 'Portal';
 
   useEffect(() => {
-    if (selectedJob && selectedJob.description) {
-        setJobDescription(`Title: ${selectedJob.title}\nCompany: ${selectedJob.company}\n\n${selectedJob.description}`);
-        setContent(null);
-        setIsApplied(false);
-    } else if (selectedJob) {
-        setJobDescription(`Title: ${selectedJob.title}\nCompany: ${selectedJob.company}`);
+    if (selectedJob) {
+        const desc = selectedJob.description 
+            ? `Title: ${selectedJob.title}\nCompany: ${selectedJob.company}\n\n${selectedJob.description}`
+            : `Title: ${selectedJob.title}\nCompany: ${selectedJob.company}`;
+        
+        setJobDescription(desc);
+        setRecruiterEmail(selectedJob.applyEmail || '');
         setContent(null);
         setIsApplied(false);
     }
@@ -56,26 +63,39 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
       setIsApplied(false);
   }
 
-  const handleLaunchEmail = () => {
+  const executeApplication = () => {
       if (!content) return;
-      const subject = encodeURIComponent(`Application for ${selectedJob?.title || 'Position'} - Abdul Hakeem`);
-      const body = encodeURIComponent(content.emailDraft || '');
-      const mailtoLink = `mailto:${recruiterEmail}?subject=${subject}&body=${body}`;
-      window.open(mailtoLink, '_blank');
+      
+      if (mode === 'Email') {
+          const subject = encodeURIComponent(content.emailSubject || `Application: ${selectedJob?.title}`);
+          const body = encodeURIComponent(content.emailDraft || '');
+          const mailtoLink = `mailto:${recruiterEmail}?subject=${subject}&body=${body}`;
+          window.location.href = mailtoLink;
+      } else {
+          // Portal Mode
+          const targetUrl = selectedJob?.applyUrl || selectedJob?.url;
+          if (targetUrl) window.open(targetUrl, '_blank');
+      }
+      
+      handleSaveToTracker();
   };
 
   const handleSaveToTracker = () => {
       if (!selectedJob || !content) return;
-      saveApplication(selectedJob, content, 'Email');
+      saveApplication(selectedJob, content, mode);
       setIsApplied(true);
   };
 
   return (
     <div className="p-8 h-screen flex flex-col">
       <header className="mb-6 flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Bot className="text-brand-500"/> Auto-Apply Bot
-        </h2>
+        <div>
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Bot className="text-brand-500"/> Auto-Apply Assistant
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">Detected Mode: <span className="text-brand-400 font-bold uppercase">{mode} Application</span></p>
+        </div>
+        
         <div className="flex items-center gap-2 bg-slate-800 p-1 rounded-lg">
             {Object.values(PersonaType).map((p) => (
                 <button
@@ -98,7 +118,7 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
         <div className="flex flex-col h-full space-y-4">
             <div className="bg-dark-card border border-dark-border rounded-xl p-4 flex-1 flex flex-col">
                 <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm text-slate-400 font-medium">Job Description Source</label>
+                    <label className="text-sm text-slate-400 font-medium">Job Details</label>
                     <button onClick={handleClear} className="text-slate-500 hover:text-red-400 flex items-center gap-1 text-xs">
                         <Trash2 size={12}/> Clear
                     </button>
@@ -109,13 +129,27 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
                     placeholder="Paste the Job Description here..."
                     className="flex-1 w-full bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-sm text-slate-300 focus:outline-none focus:border-brand-500 resize-none font-mono leading-relaxed"
                 />
+                
+                {mode === 'Email' && (
+                     <div className="mt-4">
+                        <label className="text-xs text-slate-500 mb-1 block">Recruiter Email</label>
+                        <input 
+                            type="email" 
+                            value={recruiterEmail} 
+                            onChange={(e) => setRecruiterEmail(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                            placeholder="recruiter@company.com"
+                        />
+                     </div>
+                )}
+
                 <button
                     onClick={handleGenerate}
                     disabled={isGenerating || !jobDescription}
                     className="mt-4 w-full bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-semibold shadow-lg shadow-brand-500/20 flex justify-center items-center gap-2 transition-all"
                 >
                     {isGenerating ? (
-                        <><span className="animate-pulse">Analyzing fit & Generating assets...</span></>
+                        <><span className="animate-pulse">Generating Assets...</span></>
                     ) : (
                         <><Sparkles size={18}/> Generate Application Package</>
                     )}
@@ -124,107 +158,71 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
         </div>
 
         {/* Output Section */}
-        <div className="flex flex-col h-full overflow-y-auto space-y-4 pr-2">
+        <div className="flex flex-col h-full overflow-y-auto space-y-4 pr-2 pb-10">
             {!content && !isGenerating && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-xl bg-slate-900/20">
                     <FileText size={48} className="opacity-20 mb-4"/>
-                    <p>Ready to process application data.</p>
+                    <p>Ready to draft application.</p>
                 </div>
             )}
 
             {content && (
                 <>
-                    {/* Action Bar */}
-                    <div className="flex gap-3 p-4 bg-slate-800/30 border border-slate-700 rounded-xl flex-col">
-                        <div className="flex gap-2 mb-2">
-                             <input 
-                                type="email" 
-                                placeholder="Recruiter Email (Optional)" 
-                                value={recruiterEmail}
-                                onChange={(e) => setRecruiterEmail(e.target.value)}
-                                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 text-white focus:border-brand-500 outline-none"
-                             />
-                             <button 
-                                onClick={handleLaunchEmail}
-                                className="px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium flex items-center gap-2"
-                             >
-                                <ExternalLink size={14}/> Launch Email Client
-                             </button>
+                    {/* Execution Card */}
+                    <div className="bg-brand-900/20 border border-brand-500/50 p-5 rounded-xl">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="font-bold text-white text-lg">Ready to Apply</h3>
+                                <p className="text-sm text-slate-400">
+                                    {mode === 'Email' 
+                                        ? `Send via Email to ${recruiterEmail || 'Recruiter'}` 
+                                        : `Submit via ${selectedJob?.source || 'Portal'}`
+                                    }
+                                </p>
+                            </div>
+                            <div className="text-2xl font-bold text-brand-500">{content.fitScore}% Fit</div>
                         </div>
                         
                         <button 
-                            onClick={handleSaveToTracker}
-                            disabled={isApplied}
-                            className={`w-full py-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition-all ${
-                                isApplied 
-                                ? 'bg-green-500/20 border-green-500 text-green-400 cursor-default' 
-                                : 'bg-brand-600 text-white hover:bg-brand-500 border-transparent'
-                            }`}
+                            onClick={executeApplication}
+                            className="w-full py-4 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-bold text-lg shadow-xl shadow-brand-500/20 flex items-center justify-center gap-3 transition-transform active:scale-95"
                         >
-                           {isApplied ? <><CheckCircle size={16}/> Saved to Tracker</> : <><Save size={16}/> Save to Application Tracker</>}
+                            {mode === 'Email' ? <Mail size={24}/> : <Globe size={24}/>}
+                            {mode === 'Email' ? 'Launch Email Client' : 'Open Application Portal'}
+                            <ArrowRight size={20} className="opacity-70"/>
                         </button>
-                        <p className="text-[10px] text-slate-500 text-center">
-                            *Saving logs this application in your system. Sending must be done via your email client.
-                        </p>
-                    </div>
-
-                    {/* Score Card */}
-                    <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between">
-                        <div>
-                            <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">Match Score</p>
-                            <p className="text-xs text-slate-400 mt-1 max-w-xs">{content.reasoning}</p>
-                        </div>
-                        <div className="relative w-16 h-16 flex items-center justify-center">
-                             <svg className="w-full h-full" viewBox="0 0 36 36">
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1e293b" strokeWidth="3" />
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={content.fitScore! > 80 ? "#10b981" : "#f59e0b"} strokeWidth="3" strokeDasharray={`${content.fitScore}, 100`} />
-                            </svg>
-                            <span className="absolute text-sm font-bold text-white">{content.fitScore}%</span>
-                        </div>
-                    </div>
-
-                    {/* Cover Letter */}
-                    <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden">
-                        <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700 flex justify-between items-center">
-                            <div className="flex items-center gap-2 text-sm font-medium text-white">
-                                <FileText size={16} className="text-blue-400"/> Cover Letter
+                        
+                        {isApplied && (
+                            <div className="mt-3 text-center text-green-400 text-sm flex items-center justify-center gap-2">
+                                <CheckCircle size={14}/> Marked as Applied in Tracker
                             </div>
-                            <button onClick={() => copyToClipboard(content.coverLetter || '', 'cl')} className="text-slate-400 hover:text-white">
-                                {copied === 'cl' ? <Check size={16}/> : <Copy size={16}/>}
+                        )}
+                    </div>
+
+                    {/* Content Blocks */}
+                    {content.emailSubject && (
+                        <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden">
+                             <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700 flex justify-between">
+                                <span className="text-xs font-bold text-slate-400 uppercase">Subject Line</span>
+                                <button onClick={() => copyToClipboard(content.emailSubject!, 'sub')} className="text-brand-400 hover:text-white">
+                                    {copied === 'sub' ? <Check size={14}/> : <Copy size={14}/>}
+                                </button>
+                             </div>
+                             <div className="p-3 text-sm font-medium text-white">{content.emailSubject}</div>
+                        </div>
+                    )}
+
+                    <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden flex-1">
+                        <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700 flex justify-between">
+                            <span className="text-xs font-bold text-slate-400 uppercase">
+                                {mode === 'Email' ? 'Email Body' : 'Cover Letter / Questions'}
+                            </span>
+                            <button onClick={() => copyToClipboard(mode === 'Email' ? content.emailDraft! : content.coverLetter!, 'body')} className="text-brand-400 hover:text-white">
+                                {copied === 'body' ? <Check size={14}/> : <Copy size={14}/>}
                             </button>
                         </div>
-                        <div className="p-4 text-sm text-slate-300 whitespace-pre-wrap font-sans leading-relaxed h-64 overflow-y-auto custom-scrollbar">
-                            {content.coverLetter}
-                        </div>
-                    </div>
-
-                    {/* Email Draft */}
-                    <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden">
-                        <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700 flex justify-between items-center">
-                            <div className="flex items-center gap-2 text-sm font-medium text-white">
-                                <Mail size={16} className="text-purple-400"/> Email to Recruiter
-                            </div>
-                            <button onClick={() => copyToClipboard(content.emailDraft || '', 'email')} className="text-slate-400 hover:text-white">
-                                {copied === 'email' ? <Check size={16}/> : <Copy size={16}/>}
-                            </button>
-                        </div>
-                        <div className="p-4 text-sm text-slate-300 whitespace-pre-wrap font-mono">
-                            {content.emailDraft}
-                        </div>
-                    </div>
-
-                    {/* LinkedIn Message */}
-                    <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden">
-                        <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700 flex justify-between items-center">
-                            <div className="flex items-center gap-2 text-sm font-medium text-white">
-                                <Linkedin size={16} className="text-blue-500"/> LinkedIn Connection Note
-                            </div>
-                            <button onClick={() => copyToClipboard(content.linkedinMessage || '', 'li')} className="text-slate-400 hover:text-white">
-                                {copied === 'li' ? <Check size={16}/> : <Copy size={16}/>}
-                            </button>
-                        </div>
-                        <div className="p-4 text-sm text-slate-300 whitespace-pre-wrap">
-                            {content.linkedinMessage}
+                        <div className="p-4 text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+                            {mode === 'Email' ? content.emailDraft : content.coverLetter}
                         </div>
                     </div>
                 </>

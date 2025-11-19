@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from "../types";
 
 // Initialize Gemini Client
 const getClient = () => {
@@ -10,39 +10,52 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Helper to parse JSON from potentially markdown-wrapped text or conversational text
+// Helper to parse JSON from potentially markdown-wrapped text
 const cleanAndParseJSON = (text: string) => {
   try {
-    // 1. Try standard cleanup (markdown code blocks)
     let cleaned = text.replace(/```json\n?|```/g, '').trim();
-
-    // 2. If parsing fails or text looks conversational, try finding the array/object boundaries
     if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) {
         const arrayStart = cleaned.indexOf('[');
         const objectStart = cleaned.indexOf('{');
-        
-        // Determine which comes first (if any)
         let start = -1;
-        if (arrayStart > -1 && (objectStart === -1 || arrayStart < objectStart)) {
-            start = arrayStart;
-        } else if (objectStart > -1) {
-            start = objectStart;
-        }
+        if (arrayStart > -1 && (objectStart === -1 || arrayStart < objectStart)) start = arrayStart;
+        else if (objectStart > -1) start = objectStart;
 
         if (start > -1) {
-             // Find the matching end based on start type
              const isArray = cleaned[start] === '[';
              const end = isArray ? cleaned.lastIndexOf(']') : cleaned.lastIndexOf('}');
-             if (end > start) {
-                 cleaned = cleaned.substring(start, end + 1);
-             }
+             if (end > start) cleaned = cleaned.substring(start, end + 1);
         }
     }
-
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("Failed to parse JSON from model response:", text);
     return []; 
+  }
+};
+
+export const analyzeProfileForSearch = async (): Promise<string> => {
+  const ai = getClient();
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Analyze the following CV/Profile and generate the single most effective boolean search query to find relevant high-paying jobs specifically in the UAE.
+      
+      CV CONTEXT:
+      ${ABDUL_CV_TEXT}
+      
+      CRITERIA:
+      - Target roles: Marketing Strategist, Product Manager, AI/Web3 Specialist.
+      - Location Scope: STRICTLY United Arab Emirates (UAE), Dubai, Abu Dhabi, Sharjah, Ajman, Ras Al Khaimah, Fujairah, or Umm Al Quwain.
+      - Format: Use BOOLEAN logic to combine roles with these locations.
+      
+      OUTPUT:
+      Return ONLY the query string. No explanations.
+      Example: "(Marketing Strategist OR Product Manager) AND (AI OR Web3) AND (UAE OR Dubai OR Abu Dhabi OR Sharjah)"`
+    });
+    return response.text?.trim().replace(/["']/g, "") || "Marketing Strategist AI UAE Dubai";
+  } catch (e) {
+    return "Marketing Strategist AI Web3 UAE Dubai";
   }
 };
 
@@ -52,36 +65,38 @@ export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Find 5 recent job openings in the UAE related to: ${query}. 
-      Focus on Tech, AI, Web3, and Marketing sectors. 
+      contents: `Find 20 recent job openings in the UAE (United Arab Emirates) related to: ${query}. 
       
-      STRICT OUTPUT FORMAT:
-      Return ONLY a raw JSON array. Do not include "Here is the json" or any markdown formatting.
-      Structure:
+      INSTRUCTIONS:
+      - Scour for roles in Tech, AI, Web3, and Marketing.
+      - Look for "Easy Apply" options or Direct Email applications if visible.
+      - Prioritize listings on LinkedIn, Indeed, Naukrigulf, and Company Career Pages.
+      
+      CRITICAL FOR URLs:
+      - Provide VALID, CLICKABLE links to the job post.
+      - If a specific deep link isn't found, provide the main company careers page.
+      
+      STRICT OUTPUT FORMAT (JSON Array):
       [
         {
           "title": "Job Title",
           "company": "Company Name",
-          "location": "Location",
-          "source": "Source (e.g. LinkedIn)",
-          "url": "URL if available",
-          "description": "Short description"
+          "location": "Location (Must be in UAE)",
+          "source": "Source (LinkedIn, Indeed, etc)",
+          "url": "Apply URL or Careers Page",
+          "applyUrl": "Direct Apply Link (if different)",
+          "applyEmail": "Recruiter Email (if found)",
+          "description": "Key requirements snippet (max 200 chars)"
         }
-      ]
-      If you find specific URLs in the grounding search, include them.`,
+      ]`,
       config: {
         tools: [{ googleSearch: {} }],
       }
     });
     
-    const text = response.text;
-    if (!text) return [];
-    
-    const rawJobs = cleanAndParseJSON(text);
-    
+    const rawJobs = cleanAndParseJSON(response.text || "[]");
     if (!Array.isArray(rawJobs)) return [];
 
-    // Map to our internal type and add timestamps
     return rawJobs.map((job: any) => ({
       id: Math.random().toString(36).substr(2, 9),
       title: job.title,
@@ -89,6 +104,8 @@ export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> 
       location: job.location || "UAE",
       source: job.source || "Web Search",
       url: job.url,
+      applyUrl: job.applyUrl,
+      applyEmail: job.applyEmail,
       description: job.description,
       dateFound: new Date().toISOString(),
       status: 'found'
@@ -96,29 +113,7 @@ export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> 
 
   } catch (error) {
     console.error("Error searching jobs:", error);
-    // Fallback mock data if search fails or key invalid
-    return [
-      {
-        id: 'mock-1',
-        title: 'Senior Content Strategist (Web3)',
-        company: 'Binance UAE',
-        location: 'Dubai, UAE',
-        source: 'LinkedIn',
-        dateFound: new Date().toISOString(),
-        status: 'found',
-        description: 'Leading content strategy for MENA region.'
-      },
-      {
-        id: 'mock-2',
-        title: 'Technical Project Manager',
-        company: 'G42',
-        location: 'Abu Dhabi, UAE',
-        source: 'Careers Page',
-        dateFound: new Date().toISOString(),
-        status: 'found',
-        description: 'Manage AI infrastructure projects.'
-      }
-    ];
+    return [];
   }
 };
 
@@ -134,20 +129,17 @@ export const generateApplicationMaterials = async (
     
     USER CONTEXT:
     CV: ${ABDUL_CV_TEXT}
-    Selected Portfolio URL: ${website}
+    Portfolio: ${website}
     Target Persona: ${persona}
 
     TASK:
     The user is applying for a job with the following description:
     "${jobDescription.substring(0, 3000)}"
 
-    Please generate the following application assets:
-    1. A highly persuasive Cover Letter tailored to the job, highlighting relevant experience from the CV (specifically mentioning the $2M funding or 150% traffic growth if relevant).
-    2. A concise Email Draft to the recruiter attaching the resume.
-    3. A short, professional LinkedIn Connection message (max 300 chars).
-    4. A "Fit Score" (0-100) estimating how well Abdul matches this job.
-    5. A brief reasoning for the score.
-
+    Generate application assets. 
+    - If this looks like an email application, write a subject line and email body.
+    - If this looks like a portal application, write a cover letter text.
+    
     Tone: Professional, Confident, Results-Oriented.
   `;
 
@@ -159,10 +151,10 @@ export const generateApplicationMaterials = async (
         responseSchema: {
             type: Type.OBJECT,
             properties: {
+                emailSubject: { type: Type.STRING },
                 coverLetter: { type: Type.STRING },
                 emailDraft: { type: Type.STRING },
                 linkedinMessage: { type: Type.STRING },
-                resumeSummary: { type: Type.STRING },
                 fitScore: { type: Type.INTEGER },
                 reasoning: { type: Type.STRING }
             }
@@ -174,23 +166,55 @@ export const generateApplicationMaterials = async (
   return JSON.parse(response.text);
 };
 
-export const draftAgencyOutreach = async (agencyName: string, persona: PersonaType): Promise<string> => {
+export const findAgencies = async (excludedNames: string[] = []): Promise<AgencyProfile[]> => {
+    const ai = getClient();
+    const excludeStr = excludedNames.length > 0 ? `DO NOT include these agencies: ${excludedNames.join(', ')}.` : "";
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Find 10 recruitment agencies in UAE that specialize in Technology, Marketing, AI, and Crypto/Web3.
+            ${excludeStr}
+            
+            CRITICAL: Find CONTACT DETAILS.
+            Look for:
+            1. General Inquiry or Careers Email
+            2. Office Phone Number
+            3. Website URL
+            
+            STRICT OUTPUT FORMAT (JSON Array):
+            [
+                {
+                    "name": "Agency Name",
+                    "focus": "Specialization",
+                    "email": "email address (or 'Not found')",
+                    "phone": "phone (or 'Not found')",
+                    "website": "url (or 'Not found')",
+                    "location": "City"
+                }
+            ]`,
+            config: {
+                tools: [{ googleSearch: {} }],
+            }
+        });
+        const data = cleanAndParseJSON(response.text || "[]");
+        return Array.isArray(data) ? data : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+export const draftAgencyOutreach = async (agency: AgencyProfile, persona: PersonaType): Promise<string> => {
     const ai = getClient();
     const website = USER_PROFILE.websites[persona];
 
     const prompt = `
-        Draft a cold outreach email to a recruitment agency named "${agencyName}" in the UAE.
-        
-        Sender: Abdul Hakeem (Sharjah, UAE, Immediate Joiner, Visit Visa).
-        Role Targeting: ${persona}.
+        Draft a cold outreach email to "${agency.name}" in UAE.
+        Sender: Abdul Hakeem (Sharjah, UAE, Immediate Joiner).
+        Role: ${persona}.
         Portfolio: ${website}.
-        
-        Key Highlights to mention:
-        - 4+ years exp in AI, Web3, Cloud.
-        - Proven record in UAE & KSA.
-        - Secured $2M+ funding via pitch strategies.
-        
-        Keep it concise, professional, and asking for a quick call or CV review.
+        Highlights: 4+ years exp, $2M+ funding secured, AI/Web3.
+        Goal: Request CV review or meeting.
     `;
 
     const response = await ai.models.generateContent({
@@ -201,60 +225,34 @@ export const draftAgencyOutreach = async (agencyName: string, persona: PersonaTy
     return response.text || "Could not generate email.";
 }
 
-export const findAgencies = async (): Promise<{name: string, focus: string}[]> => {
-    const ai = getClient();
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `List 5 top recruitment agencies in UAE that specialize in Technology, Marketing, and Crypto/Web3. 
-            
-            STRICT OUTPUT FORMAT:
-            Return ONLY a raw JSON array. No markdown.
-            Example: [{"name": "Agency A", "focus": "Tech"}]`,
-            config: {
-                tools: [{ googleSearch: {} }],
-            }
-        });
-        const data = cleanAndParseJSON(response.text || "[]");
-        return Array.isArray(data) ? data : [];
-    } catch (e) {
-        return [
-            { name: "Michael Page Middle East", focus: "General Tech & Marketing" },
-            { name: "Hays UAE", focus: "IT & Digital" },
-            { name: "Charterhouse", focus: "Corporate & Strategy" }
-        ];
-    }
-}
-
-export const findRecruiters = async (company: string): Promise<RecruiterProfile[]> => {
+export const findRecruiters = async (company: string, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
   const ai = getClient();
+  const excludeStr = excludedNames.length > 0 ? `DO NOT include these names: ${excludedNames.join(', ')}.` : "";
+
   try {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Find 3-5 specific Talent Acquisition Managers, Recruiters, or HR personnel working at ${company} in the UAE or MENA region.
+        contents: `Find 5 specific Talent Acquisition Managers or Recruiters at ${company} in UAE/MENA.
+        ${excludeStr}
         
-        CRITICAL: Use Google Search to find their specific CONTACT DETAILS if publicly available.
-        Look for:
-        1. LinkedIn Profile URLs
-        2. Work Email Addresses (e.g. name@${company.replace(/\s/g, '').toLowerCase()}.com)
-        3. Office Phone Numbers
+        CRITICAL: Find CONTACT DETAILS and PROFILE INFO.
+        - LinkedIn URL is priority #1.
+        - Email is priority #2.
+        - Write a short "profileSnippet" (2 sentences) about their background or focus based on search results.
         
-        STRICT OUTPUT FORMAT:
-        Return ONLY a raw JSON array. No markdown.
-        Structure: 
+        STRICT OUTPUT FORMAT (JSON Array):
         [
             {
                 "name": "Full Name", 
-                "role": "Specific Job Title", 
+                "role": "Job Title", 
                 "company": "${company}",
-                "email": "email@address.com (or 'Not found')",
-                "phone": "Phone number (or 'Not found')",
-                "linkedin": "https://linkedin.com/in/..." (or 'Not found'),
-                "source": "LinkedIn/ZoomInfo/etc"
+                "email": "email (or null)",
+                "phone": "phone (or null)",
+                "linkedin": "Full LinkedIn URL (or null)",
+                "source": "Source",
+                "profileSnippet": "Short professional bio..."
             }
-        ]
-        
-        If you cannot find specific contact details, fill with "Not found" but still provide the Name and Role.`,
+        ]`,
         config: {
             tools: [{ googleSearch: {} }],
         }
@@ -263,10 +261,7 @@ export const findRecruiters = async (company: string): Promise<RecruiterProfile[
     return Array.isArray(data) ? data : [];
   } catch (e) {
     console.error(e);
-    return [
-        { name: "Talent Acquisition Team", role: "Recruitment", company, source: "General" },
-        { name: "HR Manager", role: "Human Resources", company, source: "General" }
-    ];
+    return [];
   }
 };
 
@@ -275,22 +270,12 @@ export const generateRecruiterMessage = async (recruiterName: string, company: s
     const website = USER_PROFILE.websites[persona];
 
     const prompt = `
-        Draft a LinkedIn connection note (max 300 chars) AND a longer InMail message for a recruiter.
-        
+        Draft a LinkedIn connection note (max 300 chars) AND a longer InMail message.
         Recipient: ${recruiterName} at ${company}.
         Sender: Abdul Hakeem.
         Persona: ${persona}.
-        Website: ${website}.
-        
-        Context: Abdul is in UAE on visit visa, immediate joiner. 
-        Highlights: 4+ years exp, $2M+ funding secured, AI/Web3 expert.
-        
-        Format output as:
-        ---CONNECTION REQUEST---
-        (Content)
-        
-        ---INMAIL---
-        (Content)
+        Portfolio: ${website}.
+        Highlights: 4+ years exp, $2M+ funding, AI/Web3.
     `;
 
     const response = await ai.models.generateContent({

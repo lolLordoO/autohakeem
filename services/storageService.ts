@@ -1,6 +1,10 @@
-import { ApplicationRecord, JobOpportunity, GeneratedContent } from '../types';
+
+import { ApplicationRecord, JobOpportunity, GeneratedContent, InteractionRecord } from '../types';
 
 const APPS_KEY = 'autohakeem_applications';
+const INTERACTIONS_KEY = 'autohakeem_interactions';
+
+// --- Applications ---
 
 export const getApplications = (): ApplicationRecord[] => {
   try {
@@ -54,3 +58,40 @@ export const getStats = () => {
     rejected: apps.filter(a => a.status === 'rejected').length,
   };
 };
+
+// --- Interactions (Agencies / Recruiters) ---
+
+export const getInteractions = (type?: 'Agency' | 'Recruiter'): InteractionRecord[] => {
+    try {
+        const stored = localStorage.getItem(INTERACTIONS_KEY);
+        const all = stored ? JSON.parse(stored) : [];
+        if (type) {
+            return all.filter((i: InteractionRecord) => i.targetType === type);
+        }
+        return all;
+    } catch (e) {
+        return [];
+    }
+}
+
+export const saveInteraction = (name: string, type: 'Agency' | 'Recruiter', details: string) => {
+    const all = getInteractions();
+    // Prevent exact dupes
+    if (all.find((i: InteractionRecord) => i.name === name && i.targetType === type)) return;
+
+    const newRecord: InteractionRecord = {
+        id: Math.random().toString(36).substr(2, 9),
+        name,
+        targetType: type,
+        date: new Date().toISOString(),
+        details,
+        status: 'Contacted'
+    };
+
+    localStorage.setItem(INTERACTIONS_KEY, JSON.stringify([newRecord, ...all]));
+    return newRecord;
+}
+
+export const getExcludedNames = (type: 'Agency' | 'Recruiter'): string[] => {
+    return getInteractions(type).map(i => i.name);
+}
