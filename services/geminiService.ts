@@ -10,32 +10,56 @@ const getClient = () => {
 };
 
 const cleanAndParseJSON = (text: string) => {
+  if (!text) return [];
   try {
+    // 1. Remove Markdown code block syntax
     let cleaned = text.replace(/```json\n?|```/g, '').trim();
-    if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) {
-        const arrayStart = cleaned.indexOf('[');
-        const objectStart = cleaned.indexOf('{');
-        let start = -1;
-        if (arrayStart > -1 && (objectStart === -1 || arrayStart < objectStart)) start = arrayStart;
-        else if (objectStart > -1) start = objectStart;
 
-        if (start > -1) {
-             const isArray = cleaned[start] === '[';
-             let depth = 0;
-             let end = -1;
-             const openChar = isArray ? '[' : '{';
-             const closeChar = isArray ? ']' : '}';
-             for (let i = start; i < cleaned.length; i++) {
-                 if (cleaned[i] === openChar) depth++;
-                 else if (cleaned[i] === closeChar) depth--;
-                 if (depth === 0) { end = i; break; }
-             }
-             if (end > start) cleaned = cleaned.substring(start, end + 1);
+    // 2. Locate the outer-most JSON array or object
+    const arrayStart = cleaned.indexOf('[');
+    const objectStart = cleaned.indexOf('{');
+    
+    let startIndex = -1;
+    let endIndex = -1;
+
+    // Determine if we are looking for an Array or Object
+    if (arrayStart > -1 && (objectStart === -1 || arrayStart < objectStart)) {
+        startIndex = arrayStart;
+        // Find the matching closing bracket by counting depth
+        let depth = 0;
+        for (let i = startIndex; i < cleaned.length; i++) {
+            if (cleaned[i] === '[') depth++;
+            else if (cleaned[i] === ']') depth--;
+            
+            if (depth === 0) {
+                endIndex = i;
+                break;
+            }
+        }
+    } else if (objectStart > -1) {
+        startIndex = objectStart;
+        // Find the matching closing brace
+        let depth = 0;
+        for (let i = startIndex; i < cleaned.length; i++) {
+            if (cleaned[i] === '{') depth++;
+            else if (cleaned[i] === '}') depth--;
+            
+            if (depth === 0) {
+                endIndex = i;
+                break;
+            }
         }
     }
+
+    if (startIndex > -1 && endIndex > -1) {
+        cleaned = cleaned.substring(startIndex, endIndex + 1);
+        return JSON.parse(cleaned);
+    }
+
+    // Fallback: Try parsing the whole cleaned string if strict extraction failed
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("JSON Parse Error:", text);
+    console.error("JSON Parse Error. Raw Text:", text);
     return []; 
   }
 };
@@ -58,7 +82,6 @@ export const analyzeProfileForSearch = async (): Promise<string> => {
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
   const ai = getClient();
   
-  // Construct focused query extensions
   let focusKeywords = "";
   switch (focus) {
       case SearchFocus.MARKETING: focusKeywords = "(Marketing OR Content OR Social Media OR Brand)"; break;
@@ -68,7 +91,6 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       default: focusKeywords = "";
   }
 
-  // Specific search operators to prevent hallucinations and force real site results
   const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:dubizzle.com OR site:wuzzuf.net";
 
   try {
@@ -82,12 +104,13 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       Strictly UAE only. Exclude: US, UK, India, Remote outside UAE.
       
       CRITICAL INSTRUCTIONS: 
-      1. DO NOT INVENT COMPANY NAMES (e.g., "Innovative Tech Solutions"). Only return companies found in the snippets.
-      2. If a deep URL is not explicitly clear, return null for 'url'.
-      3. Generate a precise "search_query" (e.g. "Marketing Manager Careem Dubai application") to find this job on Google.
-      4. ESTIMATE SALARY ("salaryEstimate"): Based on the Role Title + Company Tier + UAE Market Data, provide a realistic range in AED (e.g., "AED 18k - 22k").
+      1. OUTPUT STRICT JSON ARRAY ONLY. NO CONVERSATIONAL TEXT.
+      2. DO NOT INVENT COMPANY NAMES. Only return companies found in the snippets.
+      3. If a deep URL is not explicitly clear, return null for 'url'.
+      4. Generate a precise "search_query" (e.g. "Marketing Manager Careem Dubai application") to find this job on Google.
+      5. ESTIMATE SALARY ("salaryEstimate"): Based on the Role Title + Company Tier + UAE Market Data, provide a realistic range in AED (e.g., "AED 18k - 22k").
       
-      Output JSON Array: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
+      JSON Output Format: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
       config: { tools: [{ googleSearch: {} }] }
     });
     const rawJobs = cleanAndParseJSON(response.text || "[]");
@@ -122,7 +145,10 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
             Sources: Magnitt, Wamda, Gulf Business, Zawya, MEED, Arabian Business, TradeArabia, Khaleej Times, The National, TechCrunch Middle East, Edge Middle East, Entrepreneur ME.
             
             Find Signals: Funding (Seed/Series A+), Market Entry (New Office), Product Launches, Executive Hires (New CTO/CMO), Contract Wins, Stealth Mode Openings.
-            VERIFY: Must be real events in UAE. Provide specific company names.
+            
+            CRITICAL:
+            1. OUTPUT STRICT JSON ARRAY ONLY. DO NOT START WITH "I have searched...". JUST THE JSON.
+            2. VERIFY: Must be real events in UAE.
             
             JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1"] }]`,
             config: { tools: [{ googleSearch: {} }] }
@@ -140,6 +166,8 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
             contents: `Find 20+ upcoming professional events in Dubai/Abu Dhabi (Next 60 days).
             Sources: Platinumlist, Eventbrite, Meetup, DIFC Hive, ADGM, DWTC, Step Conference, Gitex, In5, Astrolabs, Sharjah Entrepreneurship Center.
             Types: Meetups, Conferences, Hackathons, Career Fairs, Networking Nights.
+            
+            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO CONVERSATIONAL FILLER.
             
             JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
@@ -168,8 +196,10 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
         Sources: LinkedIn, Company Team Pages, ZoomInfo, RocketReach.
         Use X-Ray search logic to find real profiles.
         
-        CRITICAL: NO GUESSING EMAILS. Return null if not found.
-        Categorize: A (Decision Maker), B (Recruiter), C (HR Admin).
+        CRITICAL: 
+        1. NO GUESSING EMAILS. Return null if not found.
+        2. Categorize: A (Decision Maker), B (Recruiter), C (HR Admin).
+        3. OUTPUT STRICT JSON ARRAY ONLY.
         
         JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category" }]`,
         config: { tools: [{ googleSearch: {} }] }
@@ -215,6 +245,9 @@ export const findAgencies = async (focus: SearchFocus, excludedNames: string[] =
             Exclude: ${excludedNames.join(',')}.
             Sources: LinkedIn, Agency Directories, Google Maps, UaeStaffing.
             Prioritize boutiques and specialized firms over generic giants.
+            
+            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY.
+            
             JSON Output: [{ "name", "focus", "email", "phone", "website", "location" }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
