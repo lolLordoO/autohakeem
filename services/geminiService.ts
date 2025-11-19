@@ -61,8 +61,9 @@ export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Find 20 recent jobs in UAE (Dubai, Abu Dhabi, Sharjah) for: ${query}.
-      Strictly UAE only. Exclude: US, UK, India, Remote.
+      contents: `Find 30 recent jobs in UAE (Dubai, Abu Dhabi, Sharjah) for: ${query}.
+      Sources: LinkedIn, Indeed, Naukrigulf, Bayt, Laimoon, Hub71, Tanqeeb.
+      Strictly UAE only. Exclude: US, UK, India, Remote outside UAE.
       
       CRITICAL INSTRUCTIONS: 
       1. DO NOT HALLUCINATE URLS. If you cannot find a specific deep link, return null for "url".
@@ -99,12 +100,17 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Scan for recent (last 14 days) business news in the UAE regarding:
-            - Tech startups raising funding (Seed/Series A/B).
-            - Companies opening new HQs in Dubai/Abu Dhabi (DIFC/ADGM).
-            - Major product launches in AI, Web3, or Crypto.
+            contents: `Perform a deep web search for the UAE Tech & Business ecosystem (last 14 days). 
+            Sources: Magnitt, Wamda, Gulf Business, Zawya, LinkedIn, DIFC/ADGM/DMCC Press Releases, MEED, Arabian Business, TradeArabia, Hub71 News.
             
-            STRICTLY REAL DATA ONLY. Verify sources (Gulf News, Khaleej Times, Wamda, LinkedIn).
+            Look for: 
+            1. Funding Rounds (Seed/Series A/B).
+            2. Market Entry (Global tech companies opening Dubai/Abu Dhabi offices).
+            3. Major Product Launches or Digital Transformation partnerships.
+            4. Executive Hires (New CTO, CMO, or VP hired - implies team building).
+            5. Major Contract Wins (Govt or Enterprise contracts).
+            
+            STRICTLY REAL DATA ONLY. Verify the company exists in UAE.
             
             Identify the company and the signal. 
             Suggest who to contact (e.g. "CTO", "CMO", "Founder").
@@ -122,8 +128,9 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find upcoming Tech, AI, Web3, and Marketing events/meetups in Dubai and Abu Dhabi for the next 30 days.
-            Sources: Platinumlist, Eventbrite UAE, Meetup Dubai, DIFC/ADGM calendars.
+            contents: `Find upcoming Tech, AI, Web3, and Marketing events/meetups in Dubai and Abu Dhabi for the next 45 days.
+            Specific Platforms: Platinumlist UAE, Eventbrite Dubai, Meetup.com (Dubai Tech), DIFC FinTech Hive, ADGM Events, In5, Astrolabs, Dubai World Trade Centre.
+            Include: Hackathons, Career Fairs, Networking Nights.
             
             JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": ["Developers", "Investors", etc] }]`,
             config: { tools: [{ googleSearch: {} }] }
@@ -144,9 +151,9 @@ export const findRecruiters = async (company: string, excludedNames: string[] = 
         contents: `Find 5 Talent Acquisition/Recruiters at ${company} in UAE. ${excludeStr}.
         
         CRITICAL:
-        1. DO NOT GUESS EMAILS. If not found, return null.
+        1. DO NOT GUESS EMAILS. If not found in snippet, return null.
         2. Prioritize LinkedIn URLs. If not found, return null.
-        3. Write a 2-sentence bio "profileSnippet".
+        3. Write a 2-sentence bio "profileSnippet" based on their real profile.
         
         CATEGORIZE THEM:
         "A": Active Tech/Product/AI hiring (High Priority)
@@ -198,7 +205,8 @@ export const findAgencies = async (excludedNames: string[] = []): Promise<Agency
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 10 UAE Recruitment Agencies (Tech/AI/Marketing). Exclude: ${excludedNames.join(',')}.
+            contents: `Find 15 UAE Recruitment Agencies (Tech/AI/Marketing/Crypto). Exclude: ${excludedNames.join(',')}.
+            Prioritize Niche boutiques over massive globals.
             Find Email/Phone/Website.
             JSON Output: [{ "name", "focus", "email", "phone", "website", "location" }]`,
             config: { tools: [{ googleSearch: {} }] }
