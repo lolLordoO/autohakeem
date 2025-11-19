@@ -5,6 +5,7 @@ import JobSearch from './components/JobSearch';
 import ApplicationBot from './components/ApplicationBot';
 import Agencies from './components/Agencies';
 import RecruiterOutreach from './components/RecruiterOutreach';
+import ApplicationHistory from './components/ApplicationHistory';
 import { JobOpportunity, PersonaType } from './types';
 
 const App: React.FC = () => {
@@ -26,6 +27,8 @@ const App: React.FC = () => {
         return <JobSearch onSelectJob={handleSelectJob} setPersona={setPersona} />;
       case 'apply':
         return <ApplicationBot selectedJob={selectedJob} />;
+      case 'tracker':
+        return <ApplicationHistory />;
       case 'outreach':
         return <RecruiterOutreach />;
       case 'agencies':

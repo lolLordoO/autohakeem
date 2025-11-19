@@ -1,3 +1,4 @@
+
 export enum PersonaType {
   MARKETING = 'Marketing & Content',
   PMO = 'Project Management',
@@ -27,6 +28,16 @@ export interface JobOpportunity {
   status: 'found' | 'applied' | 'interviewing' | 'rejected';
 }
 
+export interface RecruiterProfile {
+  name: string;
+  role: string;
+  company: string;
+  email?: string;
+  phone?: string;
+  linkedin?: string;
+  source?: string;
+}
+
 export interface GeneratedContent {
   coverLetter?: string;
   emailDraft?: string;
@@ -34,6 +45,13 @@ export interface GeneratedContent {
   resumeSummary?: string;
   fitScore?: number;
   reasoning?: string;
+}
+
+export interface ApplicationRecord extends JobOpportunity {
+  appliedDate: string;
+  applicationMaterials: GeneratedContent;
+  method: 'Email' | 'LinkedIn' | 'Portal';
+  notes?: string;
 }
 
 export interface AgentLog {

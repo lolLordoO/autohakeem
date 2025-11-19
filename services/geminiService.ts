@@ -1,6 +1,7 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile } from "../types";
 
 // Initialize Gemini Client
 const getClient = () => {
@@ -225,18 +226,35 @@ export const findAgencies = async (): Promise<{name: string, focus: string}[]> =
     }
 }
 
-export const findRecruiters = async (company: string): Promise<{name: string, role: string, source?: string}[]> => {
+export const findRecruiters = async (company: string): Promise<RecruiterProfile[]> => {
   const ai = getClient();
   try {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Find 3-5 specific Talent Acquisition Managers, Recruiters, or HR personnel working at ${company} in the UAE or MENA region.
-        Use Google Search to find real names if possible.
+        
+        CRITICAL: Use Google Search to find their specific CONTACT DETAILS if publicly available.
+        Look for:
+        1. LinkedIn Profile URLs
+        2. Work Email Addresses (e.g. name@${company.replace(/\s/g, '').toLowerCase()}.com)
+        3. Office Phone Numbers
         
         STRICT OUTPUT FORMAT:
         Return ONLY a raw JSON array. No markdown.
-        Structure: [{"name": "Name", "role": "Role", "source": "LinkedIn"}]
-        If specific names aren't found, return generic titles.`,
+        Structure: 
+        [
+            {
+                "name": "Full Name", 
+                "role": "Specific Job Title", 
+                "company": "${company}",
+                "email": "email@address.com (or 'Not found')",
+                "phone": "Phone number (or 'Not found')",
+                "linkedin": "https://linkedin.com/in/..." (or 'Not found'),
+                "source": "LinkedIn/ZoomInfo/etc"
+            }
+        ]
+        
+        If you cannot find specific contact details, fill with "Not found" but still provide the Name and Role.`,
         config: {
             tools: [{ googleSearch: {} }],
         }
@@ -246,8 +264,8 @@ export const findRecruiters = async (company: string): Promise<{name: string, ro
   } catch (e) {
     console.error(e);
     return [
-        { name: "Talent Acquisition Team", role: "Recruitment", source: "General" },
-        { name: "HR Manager", role: "Human Resources", source: "General" }
+        { name: "Talent Acquisition Team", role: "Recruitment", company, source: "General" },
+        { name: "HR Manager", role: "Human Resources", company, source: "General" }
     ];
   }
 };

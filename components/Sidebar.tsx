@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Search, Send, Briefcase, Settings, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Search, Send, Briefcase, Settings, UserCircle, ListTodo } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -11,12 +11,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     { id: 'dashboard', label: 'Mission Control', icon: LayoutDashboard },
     { id: 'search', label: 'Job Search Agent', icon: Search },
     { id: 'apply', label: 'Auto-Apply Bot', icon: Briefcase },
+    { id: 'tracker', label: 'Application Tracker', icon: ListTodo },
     { id: 'outreach', label: 'Recruiter Reachout', icon: Send },
     { id: 'agencies', label: 'Agency Network', icon: UserCircle },
   ];
 
   return (
-    <div className="w-64 bg-dark-card border-r border-dark-border h-screen flex flex-col fixed left-0 top-0">
+    <div className="w-64 bg-dark-card border-r border-dark-border h-screen flex flex-col fixed left-0 top-0 z-50">
       <div className="p-6 border-b border-dark-border">
         <h1 className="text-xl font-bold text-brand-500 tracking-tight">
           AUTO<span className="text-white">HAKEEM</span>

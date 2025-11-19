@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle } from 'lucide-react';
+import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save } from 'lucide-react';
 import { PersonaType, GeneratedContent, JobOpportunity } from '../types';
 import { generateApplicationMaterials } from '../services/geminiService';
+import { saveApplication } from '../services/storageService';
 
 interface ApplicationBotProps {
   selectedJob: JobOpportunity | null;
@@ -14,6 +15,7 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
   const [content, setContent] = useState<GeneratedContent | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [isApplied, setIsApplied] = useState(false);
+  const [recruiterEmail, setRecruiterEmail] = useState('');
 
   useEffect(() => {
     if (selectedJob && selectedJob.description) {
@@ -54,6 +56,20 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
       setIsApplied(false);
   }
 
+  const handleLaunchEmail = () => {
+      if (!content) return;
+      const subject = encodeURIComponent(`Application for ${selectedJob?.title || 'Position'} - Abdul Hakeem`);
+      const body = encodeURIComponent(content.emailDraft || '');
+      const mailtoLink = `mailto:${recruiterEmail}?subject=${subject}&body=${body}`;
+      window.open(mailtoLink, '_blank');
+  };
+
+  const handleSaveToTracker = () => {
+      if (!selectedJob || !content) return;
+      saveApplication(selectedJob, content, 'Email');
+      setIsApplied(true);
+  };
+
   return (
     <div className="p-8 h-screen flex flex-col">
       <header className="mb-6 flex justify-between items-center">
@@ -71,7 +87,7 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
                         : 'text-slate-400 hover:text-white'
                     }`}
                 >
-                    {p}
+                    {p.split(' ')[0]}
                 </button>
             ))}
         </div>
@@ -119,17 +135,37 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
             {content && (
                 <>
                     {/* Action Bar */}
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 p-4 bg-slate-800/30 border border-slate-700 rounded-xl flex-col">
+                        <div className="flex gap-2 mb-2">
+                             <input 
+                                type="email" 
+                                placeholder="Recruiter Email (Optional)" 
+                                value={recruiterEmail}
+                                onChange={(e) => setRecruiterEmail(e.target.value)}
+                                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm flex-1 text-white focus:border-brand-500 outline-none"
+                             />
+                             <button 
+                                onClick={handleLaunchEmail}
+                                className="px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium flex items-center gap-2"
+                             >
+                                <ExternalLink size={14}/> Launch Email Client
+                             </button>
+                        </div>
+                        
                         <button 
-                            onClick={() => setIsApplied(!isApplied)}
-                            className={`flex-1 py-2 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition-all ${
+                            onClick={handleSaveToTracker}
+                            disabled={isApplied}
+                            className={`w-full py-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition-all ${
                                 isApplied 
-                                ? 'bg-green-500/20 border-green-500 text-green-400' 
-                                : 'border-slate-600 text-slate-300 hover:bg-slate-800'
+                                ? 'bg-green-500/20 border-green-500 text-green-400 cursor-default' 
+                                : 'bg-brand-600 text-white hover:bg-brand-500 border-transparent'
                             }`}
                         >
-                           {isApplied ? <><CheckCircle size={16}/> Applied</> : 'Mark as Applied'}
+                           {isApplied ? <><CheckCircle size={16}/> Saved to Tracker</> : <><Save size={16}/> Save to Application Tracker</>}
                         </button>
+                        <p className="text-[10px] text-slate-500 text-center">
+                            *Saving logs this application in your system. Sending must be done via your email client.
+                        </p>
                     </div>
 
                     {/* Score Card */}
