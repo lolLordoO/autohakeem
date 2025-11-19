@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import JobSearch from './components/JobSearch';
@@ -11,7 +11,7 @@ import MarketSignals from './components/MarketSignals';
 import Events from './components/Events';
 import { JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from './types';
 import { USER_PROFILE } from './constants';
-import { Mail, Phone, MapPin, Globe, Copy, ExternalLink } from 'lucide-react';
+import { Mail, MapPin, Globe, Copy, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -24,6 +24,17 @@ const App: React.FC = () => {
   const [recruiterResults, setRecruiterResults] = useState<RecruiterProfile[]>([]);
   const [recruiterQuery, setRecruiterQuery] = useState('');
   const [agencyResults, setAgencyResults] = useState<AgencyProfile[]>([]);
+
+  // Global Error State
+  const [globalError, setGlobalError] = useState<{type: string, message: string} | null>(null);
+
+  useEffect(() => {
+      const handleGeminiError = (e: CustomEvent) => {
+          setGlobalError(e.detail);
+      };
+      window.addEventListener('gemini-error' as any, handleGeminiError as any);
+      return () => window.removeEventListener('gemini-error' as any, handleGeminiError as any);
+  }, []);
 
   const handleSelectJob = (job: JobOpportunity) => {
     setSelectedJob(job);
@@ -74,14 +85,41 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-dark-bg text-slate-200 font-sans">
+    <div className="flex min-h-screen bg-dark-bg text-slate-200 font-sans relative">
+      {/* Global Error Banner */}
+      {globalError && (
+          <div className="fixed top-0 left-0 w-full z-[100] bg-red-600 text-white p-4 shadow-2xl flex justify-between items-center animate-in slide-in-from-top-full">
+              <div className="flex items-center gap-3 max-w-4xl mx-auto w-full">
+                  <AlertTriangle size={24} className="shrink-0 text-red-200" fill="currentColor"/>
+                  <div className="flex-1">
+                      <h3 className="font-bold text-lg">System Overload: API Quota Exceeded</h3>
+                      <p className="text-sm text-red-100">
+                          You have hit the Google Gemini Free Tier rate limit. 
+                          <span className="font-bold ml-1">Solution:</span> Wait a few minutes, or enable billing for higher limits.
+                      </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                      <a 
+                        href="https://aistudio.google.com/app/settings/billing" 
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-4 py-2 bg-white text-red-600 rounded-lg font-bold text-sm hover:bg-red-50 transition-colors whitespace-nowrap"
+                      >
+                          Upgrade Quota
+                      </a>
+                      <button onClick={() => setGlobalError(null)}><XCircle size={24} className="opacity-80 hover:opacity-100"/></button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         toggleProfileHud={() => setShowProfileHud(!showProfileHud)}
         showProfileHud={showProfileHud}
       />
-      <main className="flex-1 ml-64 relative">
+      <main className={`flex-1 ml-64 relative transition-all ${globalError ? 'pt-12' : ''}`}>
         {renderContent()}
 
         {showProfileHud && (

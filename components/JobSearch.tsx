@@ -44,6 +44,10 @@ export default function JobSearch({
     try {
         const optimizedQuery = await analyzeProfileForSearch();
         setQuery(optimizedQuery);
+        
+        // Artificial delay to prevent Rate Limit (RPM) hit when chaining two API calls
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
         handleSearch(optimizedQuery);
     } catch(e) {
         console.error(e);

@@ -17,10 +17,14 @@ const Events: React.FC = () => {
 
     const handleScan = async () => {
         setLoading(true);
-        const results = await findTechEvents();
-        setEvents(results);
-        saveEvents(results);
-        setLoading(false);
+        try {
+            const results = await findTechEvents();
+            if (results.length > 0) {
+                setEvents(results);
+                saveEvents(results);
+            }
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
     }
 
     const getSmartEventUrl = (evt: TechEvent) => {

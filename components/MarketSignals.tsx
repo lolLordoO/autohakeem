@@ -21,10 +21,14 @@ const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
 
     const handleScan = async () => {
         setLoading(true);
-        const results = await analyzeMarketSignals();
-        setSignals(results);
-        saveSignals(results);
-        setLoading(false);
+        try {
+            const results = await analyzeMarketSignals();
+            if (results.length > 0) {
+                setSignals(results);
+                saveSignals(results);
+            }
+        } catch(e) { console.error(e); }
+        finally { setLoading(false); }
     }
 
     const verifySignal = (signal: MarketSignal) => {

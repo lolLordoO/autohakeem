@@ -9,6 +9,40 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Helper to handle API errors globally
+const handleGeminiError = (e: any) => {
+    const msg = e.message || e.toString();
+    if (msg.toLowerCase().includes('quota') || msg.includes('429') || msg.toLowerCase().includes('limit')) {
+        const event = new CustomEvent('gemini-error', { detail: { type: 'quota', message: msg } });
+        window.dispatchEvent(event);
+        throw new Error("Quota Exceeded"); 
+    }
+    console.error("Gemini API Error:", e);
+    throw e;
+};
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Retry wrapper for API calls to handle 429/Quota bursts
+const retryWrapper = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (e: any) {
+    const msg = e.message || e.toString();
+    // Only retry on rate limit errors
+    if (retries > 0 && (msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('limit'))) {
+      console.warn(`Quota hit. Retrying in ${delay}ms... (${retries} attempts left)`);
+      await wait(delay);
+      return retryWrapper(fn, retries - 1, delay * 2); // Exponential backoff
+    }
+    // If retries exhausted or different error, bubble it up
+    if (retries === 0) {
+        handleGeminiError(e);
+    }
+    throw e;
+  }
+};
+
 const cleanAndParseJSON = (text: string) => {
   if (!text) return [];
   try {
@@ -67,78 +101,78 @@ const cleanAndParseJSON = (text: string) => {
 // --- SEARCH AGENTS ---
 
 export const analyzeProfileForSearch = async (): Promise<string> => {
-  const ai = getClient();
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Analyze CV and generate ONE Boolean search query for UAE jobs. 
-      CV: ${ABDUL_CV_TEXT}
-      Output: Query string only.`
-    });
-    return response.text?.trim().replace(/["']/g, "") || "Marketing Strategist AI UAE";
-  } catch (e) { return "Marketing Strategist AI UAE"; }
+  return retryWrapper(async () => {
+      const ai = getClient();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Analyze CV and generate ONE Boolean search query for UAE jobs. 
+        CV: ${ABDUL_CV_TEXT}
+        Output: Query string only.`
+      });
+      return response.text?.trim().replace(/["']/g, "") || "Marketing Strategist AI UAE";
+  });
 };
 
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
-  const ai = getClient();
-  
-  let focusKeywords = "";
-  switch (focus) {
-      case SearchFocus.MARKETING: focusKeywords = "(Marketing OR Content OR Social Media OR Brand)"; break;
-      case SearchFocus.TECH: focusKeywords = "(AI OR Web3 OR Blockchain OR Crypto OR Tech)"; break;
-      case SearchFocus.PMO: focusKeywords = "(Project Manager OR Product Owner OR Scrum Master)"; break;
-      case SearchFocus.CORP: focusKeywords = "(Manager OR Director OR Corporate OR Enterprise)"; break;
-      default: focusKeywords = "";
-  }
+  return retryWrapper(async () => {
+      const ai = getClient();
+      
+      let focusKeywords = "";
+      switch (focus) {
+          case SearchFocus.MARKETING: focusKeywords = "(Marketing OR Content OR Social Media OR Brand)"; break;
+          case SearchFocus.TECH: focusKeywords = "(AI OR Web3 OR Blockchain OR Crypto OR Tech)"; break;
+          case SearchFocus.PMO: focusKeywords = "(Project Manager OR Product Owner OR Scrum Master)"; break;
+          case SearchFocus.CORP: focusKeywords = "(Manager OR Director OR Corporate OR Enterprise)"; break;
+          default: focusKeywords = "";
+      }
 
-  const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:dubizzle.com OR site:wuzzuf.net";
+      const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:dubizzle.com OR site:wuzzuf.net";
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Find 30 REAL, RECENT jobs in UAE (Dubai, Abu Dhabi, Sharjah) matching: "${query} ${focusKeywords}".
-      Use these operators to find real listings: ${searchOperators}.
-      
-      EXTENSIVE SOURCE LIST: LinkedIn, Indeed, Naukrigulf, Bayt, GulfTalent, MonsterGulf, Laimoon, Dubizzle, Tanqeeb, Oliv, eFinancialCareers, Hub71, Dubai Careers, YallaMotor, Wuzzuf.
-      
-      Strictly UAE only. Exclude: US, UK, India, Remote outside UAE.
-      
-      CRITICAL INSTRUCTIONS: 
-      1. OUTPUT STRICT JSON ARRAY ONLY. NO CONVERSATIONAL TEXT.
-      2. DO NOT INVENT COMPANY NAMES. Only return companies found in the snippets.
-      3. If a deep URL is not explicitly clear, return null for 'url'.
-      4. Generate a precise "search_query" (e.g. "Marketing Manager Careem Dubai application") to find this job on Google.
-      5. ESTIMATE SALARY ("salaryEstimate"): Based on the Role Title + Company Tier + UAE Market Data, provide a realistic range in AED (e.g., "AED 18k - 22k").
-      
-      JSON Output Format: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
-      config: { tools: [{ googleSearch: {} }] }
-    });
-    const rawJobs = cleanAndParseJSON(response.text || "[]");
-    if (!Array.isArray(rawJobs)) return [];
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Find 30 REAL, RECENT jobs in UAE (Dubai, Abu Dhabi, Sharjah) matching: "${query} ${focusKeywords}".
+        Use these operators to find real listings: ${searchOperators}.
+        
+        EXTENSIVE SOURCE LIST: LinkedIn, Indeed, Naukrigulf, Bayt, GulfTalent, MonsterGulf, Laimoon, Dubizzle, Tanqeeb, Oliv, eFinancialCareers, Hub71, Dubai Careers, YallaMotor, Wuzzuf.
+        
+        Strictly UAE only. Exclude: US, UK, India, Remote outside UAE.
+        
+        CRITICAL INSTRUCTIONS: 
+        1. OUTPUT STRICT JSON ARRAY ONLY. NO CONVERSATIONAL TEXT.
+        2. DO NOT INVENT COMPANY NAMES. Only return companies found in the snippets.
+        3. If a deep URL is not explicitly clear, return null for 'url'.
+        4. Generate a precise "search_query" (e.g. "Marketing Manager Careem Dubai application") to find this job on Google.
+        5. ESTIMATE SALARY ("salaryEstimate"): Based on the Role Title + Company Tier + UAE Market Data, provide a realistic range in AED (e.g., "AED 18k - 22k").
+        
+        JSON Output Format: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
+        config: { tools: [{ googleSearch: {} }] }
+      });
+      const rawJobs = cleanAndParseJSON(response.text || "[]");
+      if (!Array.isArray(rawJobs)) return [];
 
-    return rawJobs.map((job: any) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      title: job.title,
-      company: job.company,
-      location: job.location || "UAE",
-      source: job.source || "Web Search",
-      url: job.url || null,
-      search_query: job.search_query || `${job.title} ${job.company} UAE careers`,
-      applyUrl: job.applyUrl || null,
-      applyEmail: job.applyEmail || null,
-      description: job.description,
-      salaryEstimate: job.salaryEstimate || "AED Market Rate",
-      dateFound: new Date().toISOString(),
-      status: 'found'
-    }));
-  } catch (e) { return []; }
+      return rawJobs.map((job: any) => ({
+        id: Math.random().toString(36).substr(2, 9),
+        title: job.title,
+        company: job.company,
+        location: job.location || "UAE",
+        source: job.source || "Web Search",
+        url: job.url || null,
+        search_query: job.search_query || `${job.title} ${job.company} UAE careers`,
+        applyUrl: job.applyUrl || null,
+        applyEmail: job.applyEmail || null,
+        description: job.description,
+        salaryEstimate: job.salaryEstimate || "AED Market Rate",
+        dateFound: new Date().toISOString(),
+        status: 'found'
+      }));
+  });
 };
 
 // --- INTELLIGENCE AGENTS ---
 
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Deep search UAE Business News (last 14 days) for 20+ signals.
@@ -155,12 +189,12 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
         });
         const data = cleanAndParseJSON(response.text || "[]");
         return Array.isArray(data) ? data.map((s:any) => ({...s, id: Math.random().toString(), dateDetected: new Date().toISOString()})) : [];
-    } catch (e) { return []; }
+    });
 };
 
 export const findTechEvents = async (): Promise<TechEvent[]> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Find 20+ upcoming professional events in Dubai/Abu Dhabi (Next 60 days).
@@ -174,43 +208,43 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
         });
         const data = cleanAndParseJSON(response.text || "[]");
         return Array.isArray(data) ? data.map((e:any) => ({...e, id: Math.random().toString()})) : [];
-    } catch (e) { return []; }
+    });
 };
 
 // --- RECRUITER AGENTS ---
 
 export const findRecruiters = async (company: string, focus: SearchFocus, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
-  const ai = getClient();
-  const excludeStr = excludedNames.length > 0 ? `Exclude: ${excludedNames.join(', ')}.` : "";
-  
-  let roleKeywords = "Recruiter OR Talent Acquisition OR HR Manager";
-  if (focus === SearchFocus.TECH) roleKeywords = "Technical Recruiter OR CTO OR Engineering Manager";
-  if (focus === SearchFocus.MARKETING) roleKeywords = "Marketing Director OR CMO OR Head of Content";
+  return retryWrapper(async () => {
+      const ai = getClient();
+      const excludeStr = excludedNames.length > 0 ? `Exclude: ${excludedNames.join(', ')}.` : "";
+      
+      let roleKeywords = "Recruiter OR Talent Acquisition OR HR Manager";
+      if (focus === SearchFocus.TECH) roleKeywords = "Technical Recruiter OR CTO OR Engineering Manager";
+      if (focus === SearchFocus.MARKETING) roleKeywords = "Marketing Director OR CMO OR Head of Content";
 
-  try {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Find 5 Specific People at ${company} in UAE fitting role: ${roleKeywords}.
-        ${excludeStr}
-        
-        Sources: LinkedIn, Company Team Pages, ZoomInfo, RocketReach.
-        Use X-Ray search logic to find real profiles.
-        
-        CRITICAL: 
-        1. NO GUESSING EMAILS. Return null if not found.
-        2. Categorize: A (Decision Maker), B (Recruiter), C (HR Admin).
-        3. OUTPUT STRICT JSON ARRAY ONLY.
-        
-        JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category" }]`,
-        config: { tools: [{ googleSearch: {} }] }
-    });
-    return cleanAndParseJSON(response.text || "[]");
-  } catch (e) { return []; }
+      const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Find 5 Specific People at ${company} in UAE fitting role: ${roleKeywords}.
+          ${excludeStr}
+          
+          Sources: LinkedIn, Company Team Pages, ZoomInfo, RocketReach.
+          Use X-Ray search logic to find real profiles.
+          
+          CRITICAL: 
+          1. NO GUESSING EMAILS. Return null if not found.
+          2. Categorize: A (Decision Maker), B (Recruiter), C (HR Admin).
+          3. OUTPUT STRICT JSON ARRAY ONLY.
+          
+          JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category" }]`,
+          config: { tools: [{ googleSearch: {} }] }
+      });
+      return cleanAndParseJSON(response.text || "[]");
+  });
 };
 
 export const analyzeRecruiterReply = async (replyText: string): Promise<SentimentAnalysis> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Analyze recruiter email: "${replyText}".
@@ -218,27 +252,29 @@ export const analyzeRecruiterReply = async (replyText: string): Promise<Sentimen
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
-    } catch (e) { return { sentiment: 'Neutral', suggestedTone: 'Professional', analysis: 'Error', draftReply: 'Error' }; }
+    });
 };
 
 export const generateRecruiterMessage = async (recruiterName: string, company: string, persona: PersonaType): Promise<string> => {
-    const ai = getClient();
-    const website = USER_PROFILE.websites[persona];
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Write a short, punchy LinkedIn message to ${recruiterName} at ${company}.
-        From: Abdul Hakeem (${persona}). Link: ${website}.
-        Context: ${company} is hiring/growing.
-        Style: Direct, no fluff, "Hook-Value-Ask". Mention $2M funding or 40% growth metric.`
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const website = USER_PROFILE.websites[persona];
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Write a short, punchy LinkedIn message to ${recruiterName} at ${company}.
+            From: Abdul Hakeem (${persona}). Link: ${website}.
+            Context: ${company} is hiring/growing.
+            Style: Direct, no fluff, "Hook-Value-Ask". Mention $2M funding or 40% growth metric.`
+        });
+        return response.text || "";
     });
-    return response.text || "";
 };
 
 // --- AGENCY AGENTS ---
 
 export const findAgencies = async (focus: SearchFocus, excludedNames: string[] = []): Promise<AgencyProfile[]> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Find 15 UAE Recruitment Agencies specializing in: ${focus}. 
@@ -252,26 +288,28 @@ export const findAgencies = async (focus: SearchFocus, excludedNames: string[] =
             config: { tools: [{ googleSearch: {} }] }
         });
         return cleanAndParseJSON(response.text || "[]");
-    } catch (e) { return []; }
+    });
 }
 
 export const draftAgencyOutreach = async (agency: AgencyProfile, persona: PersonaType): Promise<string> => {
-    const ai = getClient();
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Write a cold email to ${agency.name}. Focus: ${agency.focus}.
-        Persona: ${persona}.
-        Style: Professional but high-agency. Short. 
-        Goal: Get added to their candidate roster.`
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Write a cold email to ${agency.name}. Focus: ${agency.focus}.
+            Persona: ${persona}.
+            Style: Professional but high-agency. Short. 
+            Goal: Get added to their candidate roster.`
+        });
+        return response.text || "";
     });
-    return response.text || "";
 }
 
 // --- APPLICATION AGENTS ---
 
 export const recommendPersona = async (jobDescription: string): Promise<PersonaType> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Select best persona for JD: "${jobDescription.substring(0, 500)}".
@@ -281,12 +319,12 @@ export const recommendPersona = async (jobDescription: string): Promise<PersonaT
         if (text.includes("Marketing")) return PersonaType.MARKETING;
         if (text.includes("Project")) return PersonaType.PMO;
         return PersonaType.ULT;
-    } catch (e) { return PersonaType.ULT; }
+    });
 }
 
 export const generateApplicationMaterials = async (jobDescription: string, persona: PersonaType): Promise<GeneratedContent> => {
-  const ai = getClient();
-  try {
+  return retryWrapper(async () => {
+      const ai = getClient();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Generate Application (Cover Letter + Email) for Abdul Hakeem.
@@ -305,28 +343,26 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
         config: { responseMimeType: "application/json" }
       });
       return JSON.parse(response.text || "{}");
-  } catch (e) { 
-      return { emailSubject: "Application", coverLetter: "Error", emailDraft: "Error", fitScore: 0, reasoning: "Error" }; 
-  }
+  });
 };
 
 export const refineContent = async (content: GeneratedContent, instruction: string): Promise<GeneratedContent> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Refine this content. Instruction: ${instruction}. JSON: ${JSON.stringify(content)}`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
-    } catch(e) { return content; }
+    });
 };
 
 // --- CLOSING AGENTS ---
 
 export const generateInterviewBrief = async (job: JobOpportunity): Promise<string> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Create 1-page Interview Brief for ${job.title} at ${job.company}.
@@ -334,12 +370,12 @@ export const generateInterviewBrief = async (job: JobOpportunity): Promise<strin
             config: { tools: [{ googleSearch: {} }] }
         });
         return response.text || "Error.";
-    } catch (e) { return "Error."; }
+    });
 }
 
 export const evaluateOffer = async (salary: string, location: string, benefits: string): Promise<OfferEvaluation> => {
-    const ai = getClient();
-    try {
+    return retryWrapper(async () => {
+        const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Evaluate UAE Job Offer. Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
@@ -347,5 +383,5 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
-    } catch (e) { return { salary: 0, currency: 'AED', benefitsScore: 0, commuteMinutes: 0, growthPotential: 0, totalScore: 0, recommendation: 'Error' }; }
+    });
 }
