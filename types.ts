@@ -5,6 +5,14 @@ export enum PersonaType {
   ULT = 'Ultimate / Hybrid'
 }
 
+export enum SearchFocus {
+  ALL = 'General / Broad',
+  MARKETING = 'Marketing, Content & Creative',
+  TECH = 'Tech, AI & Web3',
+  PMO = 'Project & Product Management',
+  CORP = 'Corporate & Enterprise'
+}
+
 export interface UserProfile {
   name: string;
   email: string;
@@ -27,6 +35,7 @@ export interface JobOpportunity {
   applyUrl?: string; 
   applyEmail?: string; 
   description?: string;
+  salaryEstimate?: string; // e.g. "AED 15,000 - 20,000"
   dateFound: string;
   status: 'found' | 'applied' | 'interviewing' | 'rejected' | 'offer';
 }
@@ -86,7 +95,7 @@ export interface InteractionRecord {
 export interface MarketSignal {
   id: string;
   company: string;
-  signalType: 'Funding' | 'Expansion' | 'Hiring Spree' | 'Product Launch';
+  signalType: 'Funding' | 'Expansion' | 'Hiring Spree' | 'Product Launch' | 'Executive Hire' | 'Contract Win';
   summary: string;
   dateDetected: string;
   actionableLeads: string[]; // Names of roles to target (e.g. "CTO", "Head of Product")
@@ -97,7 +106,7 @@ export interface TechEvent {
   name: string;
   date: string;
   location: string;
-  type: 'Meetup' | 'Conference' | 'Workshop';
+  type: 'Meetup' | 'Conference' | 'Workshop' | 'Hackathon' | 'Career Fair';
   url?: string;
   keyAttendees?: string[];
 }

@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap } from 'lucide-react';
+import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap, Filter } from 'lucide-react';
 import { findRecruiters, generateRecruiterMessage, analyzeRecruiterReply } from '../services/geminiService';
 import { getInteractions, saveInteraction, getExcludedNames, getLastContactDate } from '../services/storageService';
-import { PersonaType, RecruiterProfile, InteractionRecord, SentimentAnalysis } from '../types';
+import { PersonaType, RecruiterProfile, InteractionRecord, SentimentAnalysis, SearchFocus } from '../types';
 
 interface RecruiterOutreachProps {
   results: RecruiterProfile[];
@@ -25,6 +25,7 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
   const [generatedMsg, setGeneratedMsg] = useState('');
   const [isMsgLoading, setIsMsgLoading] = useState(false);
   const [persona, setPersona] = useState<PersonaType>(PersonaType.MARKETING);
+  const [focus, setFocus] = useState<SearchFocus>(SearchFocus.ALL);
   
   // Intelligence State
   const [replyText, setReplyText] = useState('');
@@ -42,7 +43,7 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
     setSelectedRecruiter(null);
     try {
       const excluded = getExcludedNames('Recruiter');
-      const data = await findRecruiters(companyQuery, excluded);
+      const data = await findRecruiters(companyQuery, focus, excluded);
       setResults(data);
     } catch (e) { console.error(e); } 
     finally { setIsLoading(false); }
@@ -160,14 +161,25 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                 {/* Left Panel */}
                 <div className="flex flex-col space-y-4 h-full overflow-hidden">
                     {view === 'search' && (
-                        <div className="bg-dark-card border border-dark-border p-6 rounded-xl shrink-0">
+                        <div className="bg-dark-card border border-dark-border p-6 rounded-xl shrink-0 space-y-4">
+                             <div className="flex items-center gap-2 text-xs text-slate-400">
+                                <Filter size={12}/> Role Target:
+                                <select 
+                                    value={focus}
+                                    onChange={(e) => setFocus(e.target.value as SearchFocus)}
+                                    className="bg-slate-800 text-white border border-slate-700 rounded px-2 py-1 outline-none"
+                                >
+                                    {Object.values(SearchFocus).map(f => <option key={f} value={f}>{f}</option>)}
+                                </select>
+                             </div>
                             <div className="flex gap-2">
                                 <input
                                     type="text"
                                     value={companyQuery}
                                     onChange={(e) => setCompanyQuery(e.target.value)}
-                                    placeholder="Target Company..."
+                                    placeholder="Target Company (e.g. Careem, Etisalat)..."
                                     className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-brand-500 outline-none"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 />
                                 <button onClick={handleSearch} disabled={isLoading} className="bg-brand-600 text-white px-4 py-2 rounded-lg">
                                     {isLoading ? <Loader2 className="animate-spin"/> : <Search/>}
@@ -176,7 +188,7 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                         </div>
                     )}
 
-                    <div className="flex-1 overflow-y-auto space-y-3 pr-2 pb-20">
+                    <div className="flex-1 overflow-y-auto space-y-3 pr-2 pb-20 custom-scrollbar">
                         {view === 'search' ? results.map((rec, idx) => {
                             const warning = getSpamWarning(rec.name);
                             return (
@@ -242,7 +254,12 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                                 </div>
                             )}
                         </>
-                    ) : <div className="h-full flex items-center justify-center text-slate-500">Select a recruiter.</div>}
+                    ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                            <Users size={48} className="opacity-20 mb-4"/>
+                            <p>Select a recruiter to begin outreach.</p>
+                        </div>
+                    )}
                 </div>
             </>
         )}

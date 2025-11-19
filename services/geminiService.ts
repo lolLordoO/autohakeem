@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus } from "../types";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -40,7 +40,7 @@ const cleanAndParseJSON = (text: string) => {
   }
 };
 
-// --- EXISTING SEARCH AGENTS ---
+// --- SEARCH AGENTS ---
 
 export const analyzeProfileForSearch = async (): Promise<string> => {
   const ai = getClient();
@@ -49,28 +49,30 @@ export const analyzeProfileForSearch = async (): Promise<string> => {
       model: 'gemini-2.5-flash',
       contents: `Analyze CV and generate ONE Boolean search query for UAE jobs. 
       CV: ${ABDUL_CV_TEXT}
-      Criteria: Senior roles, Tech/AI/Marketing, UAE specific.
       Output: Query string only.`
     });
     return response.text?.trim().replace(/["']/g, "") || "Marketing Strategist AI UAE";
   } catch (e) { return "Marketing Strategist AI UAE"; }
 };
 
-export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> => {
+export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
   const ai = getClient();
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Find 30 recent jobs in UAE (Dubai, Abu Dhabi, Sharjah) for: ${query}.
-      Sources: LinkedIn, Indeed, Naukrigulf, Bayt, Laimoon, Hub71, Tanqeeb.
+      contents: `Find 30 recent jobs in UAE (Dubai, Abu Dhabi, Sharjah) matching: "${query}".
+      Focus Area: ${focus}.
+      
+      EXTENSIVE SOURCE LIST: LinkedIn, Indeed, Naukrigulf, Bayt, GulfTalent, MonsterGulf, Laimoon, Dubizzle, Tanqeeb, Oliv, eFinancialCareers, Hub71, Dubai Careers, YallaMotor (for auto), Wuzzuf.
+      
       Strictly UAE only. Exclude: US, UK, India, Remote outside UAE.
       
       CRITICAL INSTRUCTIONS: 
-      1. DO NOT HALLUCINATE URLS. If you cannot find a specific deep link, return null for "url".
-      2. Generate a precise "search_query" (e.g. "Marketing Manager Emirates Airlines Dubai careers") to find this specific job on Google.
-      3. Extract "applyEmail" only if explicitly visible.
+      1. DO NOT HALLUCINATE URLS. If deep link is not found, return null.
+      2. Generate a precise "search_query" to find this job on Google.
+      3. Estimate "salaryEstimate" (e.g., "AED 15k-20k") based on Role + Company Tier + UAE Market Data.
       
-      Output JSON Array: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description" }]`,
+      Output JSON Array: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
       config: { tools: [{ googleSearch: {} }] }
     });
     const rawJobs = cleanAndParseJSON(response.text || "[]");
@@ -87,35 +89,27 @@ export const searchJobsInUAE = async (query: string): Promise<JobOpportunity[]> 
       applyUrl: job.applyUrl || null,
       applyEmail: job.applyEmail || null,
       description: job.description,
+      salaryEstimate: job.salaryEstimate || "Not listed",
       dateFound: new Date().toISOString(),
       status: 'found'
     }));
   } catch (e) { return []; }
 };
 
-// --- INTELLIGENCE AGENTS (NEW) ---
+// --- INTELLIGENCE AGENTS ---
 
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     const ai = getClient();
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Perform a deep web search for the UAE Tech & Business ecosystem (last 14 days). 
-            Sources: Magnitt, Wamda, Gulf Business, Zawya, LinkedIn, DIFC/ADGM/DMCC Press Releases, MEED, Arabian Business, TradeArabia, Hub71 News.
+            contents: `Deep search UAE Business News (last 14 days). 
+            Sources: Magnitt, Wamda, Gulf Business, Zawya, MEED, Arabian Business, TradeArabia, Khaleej Times, The National, TechCrunch Middle East.
             
-            Look for: 
-            1. Funding Rounds (Seed/Series A/B).
-            2. Market Entry (Global tech companies opening Dubai/Abu Dhabi offices).
-            3. Major Product Launches or Digital Transformation partnerships.
-            4. Executive Hires (New CTO, CMO, or VP hired - implies team building).
-            5. Major Contract Wins (Govt or Enterprise contracts).
+            Find Signals: Funding, Market Entry, Product Launches, Executive Hires, Contract Wins.
+            VERIFY: Must be real events in UAE.
             
-            STRICTLY REAL DATA ONLY. Verify the company exists in UAE.
-            
-            Identify the company and the signal. 
-            Suggest who to contact (e.g. "CTO", "CMO", "Founder").
-            
-            JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1", "Role2"] }]`,
+            JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1"] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
@@ -128,11 +122,11 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find upcoming Tech, AI, Web3, and Marketing events/meetups in Dubai and Abu Dhabi for the next 45 days.
-            Specific Platforms: Platinumlist UAE, Eventbrite Dubai, Meetup.com (Dubai Tech), DIFC FinTech Hive, ADGM Events, In5, Astrolabs, Dubai World Trade Centre.
-            Include: Hackathons, Career Fairs, Networking Nights.
+            contents: `Find upcoming professional events in Dubai/Abu Dhabi (Next 45 days).
+            Sources: Platinumlist, Eventbrite, Meetup, DIFC, ADGM, DWTC, Step Conference, Gitex, In5, Astrolabs.
+            Types: Meetups, Conferences, Hackathons, Career Fairs.
             
-            JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": ["Developers", "Investors", etc] }]`,
+            JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
@@ -142,25 +136,22 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
 
 // --- RECRUITER AGENTS ---
 
-export const findRecruiters = async (company: string, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
+export const findRecruiters = async (company: string, focus: SearchFocus, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
   const ai = getClient();
   const excludeStr = excludedNames.length > 0 ? `Exclude: ${excludedNames.join(', ')}.` : "";
   try {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Find 5 Talent Acquisition/Recruiters at ${company} in UAE. ${excludeStr}.
+        contents: `Find 5 Recruiters/Hiring Managers at ${company} in UAE.
+        Focus: ${focus === SearchFocus.ALL ? 'Relevant Hiring Managers' : focus}.
+        ${excludeStr}
         
-        CRITICAL:
-        1. DO NOT GUESS EMAILS. If not found in snippet, return null.
-        2. Prioritize LinkedIn URLs. If not found, return null.
-        3. Write a 2-sentence bio "profileSnippet" based on their real profile.
+        Sources: LinkedIn, Company Team Pages, ZoomInfo, RocketReach (via Google snippets).
         
-        CATEGORIZE THEM:
-        "A": Active Tech/Product/AI hiring (High Priority)
-        "B": General Recruitment (Active but general)
-        "C": Corporate HR / Admin (Slow)
+        CRITICAL: NO GUESSING EMAILS. Return null if not found.
+        Categorize: A (High Priority), B (General), C (HR).
         
-        JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category": "A"|"B"|"C" }]`,
+        JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category" }]`,
         config: { tools: [{ googleSearch: {} }] }
     });
     return cleanAndParseJSON(response.text || "[]");
@@ -172,18 +163,12 @@ export const analyzeRecruiterReply = async (replyText: string): Promise<Sentimen
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Analyze this email from a recruiter:
-            "${replyText}"
-            
-            1. Determine Sentiment (Positive/Neutral/Negative/Blunt).
-            2. Suggest Response Tone.
-            3. Draft a response from Abdul Hakeem (Candidate).
-            
+            contents: `Analyze recruiter email: "${replyText}".
             JSON Output: { "sentiment", "suggestedTone", "analysis", "draftReply" }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
-    } catch (e) { return { sentiment: 'Neutral', suggestedTone: 'Professional', analysis: 'Error', draftReply: 'Error generating.' }; }
+    } catch (e) { return { sentiment: 'Neutral', suggestedTone: 'Professional', analysis: 'Error', draftReply: 'Error' }; }
 };
 
 export const generateRecruiterMessage = async (recruiterName: string, company: string, persona: PersonaType): Promise<string> => {
@@ -191,23 +176,25 @@ export const generateRecruiterMessage = async (recruiterName: string, company: s
     const website = USER_PROFILE.websites[persona];
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Draft LinkedIn InMail for ${recruiterName} at ${company}. 
-        Sender: Abdul Hakeem (${persona}). Portfolio: ${website}. 
-        Highlights: $2M+ funding, AI/Web3 exp. UAE based.`
+        contents: `Write a short, punchy LinkedIn message to ${recruiterName} at ${company}.
+        From: Abdul Hakeem (${persona}). Link: ${website}.
+        Context: ${company} is hiring/growing.
+        Style: Direct, no fluff, "Hook-Value-Ask". Mention $2M funding or 40% growth metric.`
     });
     return response.text || "";
 };
 
 // --- AGENCY AGENTS ---
 
-export const findAgencies = async (excludedNames: string[] = []): Promise<AgencyProfile[]> => {
+export const findAgencies = async (focus: SearchFocus, excludedNames: string[] = []): Promise<AgencyProfile[]> => {
     const ai = getClient();
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 15 UAE Recruitment Agencies (Tech/AI/Marketing/Crypto). Exclude: ${excludedNames.join(',')}.
-            Prioritize Niche boutiques over massive globals.
-            Find Email/Phone/Website.
+            contents: `Find 15 UAE Recruitment Agencies specializing in: ${focus}. 
+            Exclude: ${excludedNames.join(',')}.
+            Sources: LinkedIn, Agency Directories, Google Maps.
+            Prioritize boutiques.
             JSON Output: [{ "name", "focus", "email", "phone", "website", "location" }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -219,7 +206,10 @@ export const draftAgencyOutreach = async (agency: AgencyProfile, persona: Person
     const ai = getClient();
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Draft cold email to ${agency.name} (UAE). Role: ${persona}. Highlights: $2M funding, AI exp. Goal: Meeting.`
+        contents: `Write a cold email to ${agency.name}. Focus: ${agency.focus}.
+        Persona: ${persona}.
+        Style: Professional but high-agency. Short. 
+        Goal: Get added to their candidate roster.`
     });
     return response.text || "";
 }
@@ -231,15 +221,8 @@ export const recommendPersona = async (jobDescription: string): Promise<PersonaT
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Analyze this JD and select the best persona for Abdul Hakeem:
-            JD: "${jobDescription.substring(0, 500)}"
-            
-            Options:
-            1. MARKETING (Content, SEO, Growth)
-            2. PMO (Project Management, Agile, Scrum)
-            3. ULT (Hybrid, Founder-level, Strategy + Tech)
-            
-            Output ONLY the Enum string: "Marketing & Content", "Project Management", or "Ultimate / Hybrid".`
+            contents: `Select best persona for JD: "${jobDescription.substring(0, 500)}".
+            Options: Marketing, PMO, Ult. Output Enum string only.`
         });
         const text = response.text?.trim() || "";
         if (text.includes("Marketing")) return PersonaType.MARKETING;
@@ -253,21 +236,22 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
   try {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Generate Cover Letter & Email for Abdul Hakeem.
-        Persona: ${persona}. CV: ${ABDUL_CV_TEXT}.
+        contents: `Generate Application for Abdul Hakeem.
+        Persona: ${persona}. CV Data: ${ABDUL_CV_TEXT}.
         JD: ${jobDescription.substring(0, 1000)}.
         
-        MUST Include: Specific metrics ($2M funding, 40% MQLs, 150% traffic).
-        Tone: High-Agency, Professional.
+        STYLE GUIDE (CRITICAL):
+        1. NO "I am writing to apply". Start with a hook about the company/industry.
+        2. Be direct and humane. Sound like a senior expert, not a template.
+        3. INJECT METRICS: Must mention "$2M+ funding", "40% MQL increase", or "150% traffic growth".
+        4. Short paragraphs.
         
         JSON Output: { "emailSubject", "coverLetter", "emailDraft", "fitScore", "reasoning" }`,
         config: { responseMimeType: "application/json" }
       });
       return JSON.parse(response.text || "{}");
   } catch (e) { 
-      return { 
-          emailSubject: "Application", coverLetter: "Error generating content. Please try again.", emailDraft: "Error", fitScore: 0, reasoning: "Error" 
-      }; 
+      return { emailSubject: "Application", coverLetter: "Error", emailDraft: "Error", fitScore: 0, reasoning: "Error" }; 
   }
 };
 
@@ -276,7 +260,7 @@ export const refineContent = async (content: GeneratedContent, instruction: stri
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Refine this JSON content based on: "${instruction}". JSON: ${JSON.stringify(content)}`,
+            contents: `Refine this content. Instruction: ${instruction}. JSON: ${JSON.stringify(content)}`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
@@ -290,15 +274,12 @@ export const generateInterviewBrief = async (job: JobOpportunity): Promise<strin
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Create a 1-page Interview Cheat Sheet for: ${job.title} at ${job.company}.
-            Include:
-            1. Company Mission (Web Search).
-            2. Key Talking Points connecting Abdul's CV (Crypto $2M funding, AI) to their likely needs.
-            3. 3 Smart Questions to ask the interviewer.`,
+            contents: `Create 1-page Interview Brief for ${job.title} at ${job.company}.
+            Include Mission, Talking Points (map CV metrics to JD), and 3 Strategic Questions.`,
             config: { tools: [{ googleSearch: {} }] }
         });
-        return response.text || "Could not generate brief.";
-    } catch (e) { return "Error generating brief."; }
+        return response.text || "Error.";
+    } catch (e) { return "Error."; }
 }
 
 export const evaluateOffer = async (salary: string, location: string, benefits: string): Promise<OfferEvaluation> => {
@@ -306,10 +287,8 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Evaluate this job offer in UAE context:
-            Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
-            
-            Output JSON: { "salary": number, "currency": "AED", "benefitsScore": number(1-10), "commuteMinutes": number (estimate), "growthPotential": number (1-10), "totalScore": number, "recommendation": "string" }`,
+            contents: `Evaluate UAE Job Offer. Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
+            JSON Output: { "salary": number, "currency": "AED", "benefitsScore": number, "commuteMinutes": number, "growthPotential": number, "totalScore": number, "recommendation": "string" }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
