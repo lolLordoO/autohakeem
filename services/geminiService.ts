@@ -57,20 +57,35 @@ export const analyzeProfileForSearch = async (): Promise<string> => {
 
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
   const ai = getClient();
+  
+  // Construct focused query extensions
+  let focusKeywords = "";
+  switch (focus) {
+      case SearchFocus.MARKETING: focusKeywords = "(Marketing OR Content OR Social Media OR Brand)"; break;
+      case SearchFocus.TECH: focusKeywords = "(AI OR Web3 OR Blockchain OR Crypto OR Tech)"; break;
+      case SearchFocus.PMO: focusKeywords = "(Project Manager OR Product Owner OR Scrum Master)"; break;
+      case SearchFocus.CORP: focusKeywords = "(Manager OR Director OR Corporate OR Enterprise)"; break;
+      default: focusKeywords = "";
+  }
+
+  // Specific search operators to prevent hallucinations and force real site results
+  const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:dubizzle.com OR site:wuzzuf.net";
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Find 30 recent jobs in UAE (Dubai, Abu Dhabi, Sharjah) matching: "${query}".
-      Focus Area: ${focus}.
+      contents: `Find 30 REAL, RECENT jobs in UAE (Dubai, Abu Dhabi, Sharjah) matching: "${query} ${focusKeywords}".
+      Use these operators to find real listings: ${searchOperators}.
       
-      EXTENSIVE SOURCE LIST: LinkedIn, Indeed, Naukrigulf, Bayt, GulfTalent, MonsterGulf, Laimoon, Dubizzle, Tanqeeb, Oliv, eFinancialCareers, Hub71, Dubai Careers, YallaMotor (for auto), Wuzzuf.
+      EXTENSIVE SOURCE LIST: LinkedIn, Indeed, Naukrigulf, Bayt, GulfTalent, MonsterGulf, Laimoon, Dubizzle, Tanqeeb, Oliv, eFinancialCareers, Hub71, Dubai Careers, YallaMotor, Wuzzuf.
       
       Strictly UAE only. Exclude: US, UK, India, Remote outside UAE.
       
       CRITICAL INSTRUCTIONS: 
-      1. DO NOT HALLUCINATE URLS. If deep link is not found, return null.
-      2. Generate a precise "search_query" to find this job on Google.
-      3. Estimate "salaryEstimate" (e.g., "AED 15k-20k") based on Role + Company Tier + UAE Market Data.
+      1. DO NOT INVENT COMPANY NAMES (e.g., "Innovative Tech Solutions"). Only return companies found in the snippets.
+      2. If a deep URL is not explicitly clear, return null for 'url'.
+      3. Generate a precise "search_query" (e.g. "Marketing Manager Careem Dubai application") to find this job on Google.
+      4. ESTIMATE SALARY ("salaryEstimate"): Based on the Role Title + Company Tier + UAE Market Data, provide a realistic range in AED (e.g., "AED 18k - 22k").
       
       Output JSON Array: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
       config: { tools: [{ googleSearch: {} }] }
@@ -89,7 +104,7 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       applyUrl: job.applyUrl || null,
       applyEmail: job.applyEmail || null,
       description: job.description,
-      salaryEstimate: job.salaryEstimate || "Not listed",
+      salaryEstimate: job.salaryEstimate || "AED Market Rate",
       dateFound: new Date().toISOString(),
       status: 'found'
     }));
@@ -103,11 +118,11 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (last 14 days). 
-            Sources: Magnitt, Wamda, Gulf Business, Zawya, MEED, Arabian Business, TradeArabia, Khaleej Times, The National, TechCrunch Middle East.
+            contents: `Deep search UAE Business News (last 14 days) for 20+ signals.
+            Sources: Magnitt, Wamda, Gulf Business, Zawya, MEED, Arabian Business, TradeArabia, Khaleej Times, The National, TechCrunch Middle East, Edge Middle East, Entrepreneur ME.
             
-            Find Signals: Funding, Market Entry, Product Launches, Executive Hires, Contract Wins.
-            VERIFY: Must be real events in UAE.
+            Find Signals: Funding (Seed/Series A+), Market Entry (New Office), Product Launches, Executive Hires (New CTO/CMO), Contract Wins, Stealth Mode Openings.
+            VERIFY: Must be real events in UAE. Provide specific company names.
             
             JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1"] }]`,
             config: { tools: [{ googleSearch: {} }] }
@@ -122,9 +137,9 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find upcoming professional events in Dubai/Abu Dhabi (Next 45 days).
-            Sources: Platinumlist, Eventbrite, Meetup, DIFC, ADGM, DWTC, Step Conference, Gitex, In5, Astrolabs.
-            Types: Meetups, Conferences, Hackathons, Career Fairs.
+            contents: `Find 20+ upcoming professional events in Dubai/Abu Dhabi (Next 60 days).
+            Sources: Platinumlist, Eventbrite, Meetup, DIFC Hive, ADGM, DWTC, Step Conference, Gitex, In5, Astrolabs, Sharjah Entrepreneurship Center.
+            Types: Meetups, Conferences, Hackathons, Career Fairs, Networking Nights.
             
             JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
@@ -139,17 +154,22 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
 export const findRecruiters = async (company: string, focus: SearchFocus, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
   const ai = getClient();
   const excludeStr = excludedNames.length > 0 ? `Exclude: ${excludedNames.join(', ')}.` : "";
+  
+  let roleKeywords = "Recruiter OR Talent Acquisition OR HR Manager";
+  if (focus === SearchFocus.TECH) roleKeywords = "Technical Recruiter OR CTO OR Engineering Manager";
+  if (focus === SearchFocus.MARKETING) roleKeywords = "Marketing Director OR CMO OR Head of Content";
+
   try {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Find 5 Recruiters/Hiring Managers at ${company} in UAE.
-        Focus: ${focus === SearchFocus.ALL ? 'Relevant Hiring Managers' : focus}.
+        contents: `Find 5 Specific People at ${company} in UAE fitting role: ${roleKeywords}.
         ${excludeStr}
         
-        Sources: LinkedIn, Company Team Pages, ZoomInfo, RocketReach (via Google snippets).
+        Sources: LinkedIn, Company Team Pages, ZoomInfo, RocketReach.
+        Use X-Ray search logic to find real profiles.
         
         CRITICAL: NO GUESSING EMAILS. Return null if not found.
-        Categorize: A (High Priority), B (General), C (HR).
+        Categorize: A (Decision Maker), B (Recruiter), C (HR Admin).
         
         JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category" }]`,
         config: { tools: [{ googleSearch: {} }] }
@@ -193,8 +213,8 @@ export const findAgencies = async (focus: SearchFocus, excludedNames: string[] =
             model: 'gemini-2.5-flash',
             contents: `Find 15 UAE Recruitment Agencies specializing in: ${focus}. 
             Exclude: ${excludedNames.join(',')}.
-            Sources: LinkedIn, Agency Directories, Google Maps.
-            Prioritize boutiques.
+            Sources: LinkedIn, Agency Directories, Google Maps, UaeStaffing.
+            Prioritize boutiques and specialized firms over generic giants.
             JSON Output: [{ "name", "focus", "email", "phone", "website", "location" }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -236,15 +256,17 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
   try {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Generate Application for Abdul Hakeem.
-        Persona: ${persona}. CV Data: ${ABDUL_CV_TEXT}.
+        contents: `Generate Application (Cover Letter + Email) for Abdul Hakeem.
+        Persona: ${persona}. 
+        CV Highligts: ${ABDUL_CV_TEXT.substring(0, 500)}.
         JD: ${jobDescription.substring(0, 1000)}.
         
-        STYLE GUIDE (CRITICAL):
-        1. NO "I am writing to apply". Start with a hook about the company/industry.
-        2. Be direct and humane. Sound like a senior expert, not a template.
-        3. INJECT METRICS: Must mention "$2M+ funding", "40% MQL increase", or "150% traffic growth".
-        4. Short paragraphs.
+        CRITICAL TONE & STYLE INSTRUCTIONS:
+        1. HUMANE & SPECIFIC: Do NOT start with "I am writing to apply". That is banned. Start with a hook about the company's recent work or industry challenge.
+        2. NO CORPORATE FLUFF: Do not use words like "thrilled", "esteemed", "passionate". Be professional, grounded, and expert.
+        3. METRIC-DRIVEN: You MUST include specific numbers from the CV (e.g., "$2M+ funding secured", "40% MQL growth").
+        4. DIRECT CALL TO ACTION: End with a confident request for a chat.
+        5. SHORT: Keep it under 200 words.
         
         JSON Output: { "emailSubject", "coverLetter", "emailDraft", "fitScore", "reasoning" }`,
         config: { responseMimeType: "application/json" }

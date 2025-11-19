@@ -67,14 +67,17 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
                     <p className="text-slate-500 text-sm">Discover niche recruiters & boutiques.</p>
                 </div>
                 
-                <div className="flex gap-2">
-                     <select 
-                        value={focus}
-                        onChange={(e) => setFocus(e.target.value as SearchFocus)}
-                        className="bg-slate-800 text-white text-xs border border-slate-700 rounded px-3 py-2 outline-none focus:border-brand-500"
-                     >
-                         {Object.values(SearchFocus).map(f => <option key={f} value={f}>{f}</option>)}
-                     </select>
+                <div className="flex gap-2 items-center">
+                     <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-2 rounded-md border border-slate-700">
+                        <Filter size={12} className="text-slate-400"/>
+                        <select 
+                            value={focus}
+                            onChange={(e) => setFocus(e.target.value as SearchFocus)}
+                            className="bg-transparent text-white text-xs outline-none font-medium cursor-pointer"
+                        >
+                            {Object.values(SearchFocus).map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                     </div>
 
                     <div className="flex bg-slate-800 rounded-lg p-1">
                         <button onClick={() => setActiveView('search')} className={`px-4 py-2 rounded-md text-sm ${activeView === 'search' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>Search New</button>

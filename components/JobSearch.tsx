@@ -88,11 +88,11 @@ export default function JobSearch({
 
       {/* Search Interface */}
       <div className="bg-dark-card border border-dark-border p-4 rounded-xl mb-6 shadow-lg">
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-4 mb-4 border-b border-slate-800 pb-4">
              <div className="flex items-center gap-2 text-sm text-slate-400">
                  <Filter size={14} /> Focus:
              </div>
-             <div className="flex gap-2">
+             <div className="flex flex-wrap gap-2">
                  {Object.values(SearchFocus).map(focus => (
                      <button
                         key={focus}
@@ -189,9 +189,11 @@ export default function JobSearch({
                         <span className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-300 border border-slate-700 flex items-center gap-1">
                             <MapPin size={10}/> {job.location}
                         </span>
-                        <span className="px-2 py-1 rounded bg-emerald-900/20 text-xs text-emerald-400 border border-emerald-900/30 flex items-center gap-1">
-                            <DollarSign size={10}/> {job.salaryEstimate}
-                        </span>
+                        {job.salaryEstimate && (
+                            <span className="px-2 py-1 rounded bg-emerald-900/20 text-xs text-emerald-400 border border-emerald-900/30 flex items-center gap-1 font-mono">
+                                <DollarSign size={10}/> {job.salaryEstimate}
+                            </span>
+                        )}
                         <span className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-300 border border-slate-700 flex items-center gap-1">
                             {getSourceBadge(job.source)}
                         </span>
