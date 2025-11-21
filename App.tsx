@@ -9,6 +9,7 @@ import RecruiterOutreach from './components/RecruiterOutreach';
 import ApplicationHistory from './components/ApplicationHistory';
 import MarketSignals from './components/MarketSignals';
 import Events from './components/Events';
+import Settings from './components/Settings';
 import { JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from './types';
 import { USER_PROFILE } from './constants';
 import { Mail, MapPin, Globe, Copy, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
@@ -80,6 +81,7 @@ const App: React.FC = () => {
             setResults={setAgencyResults}
           />
         );
+      case 'settings': return <Settings />;
       default: return <Dashboard />;
     }
   };

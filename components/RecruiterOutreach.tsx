@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap, Filter } from 'lucide-react';
-import { findRecruiters, generateRecruiterMessage, analyzeRecruiterReply } from '../services/geminiService';
+import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap, Filter, MessageCircle } from 'lucide-react';
+import { findRecruiters, generateRecruiterMessage, analyzeRecruiterReply, generateWhatsAppMessage } from '../services/geminiService';
 import { getInteractions, saveInteraction, getExcludedNames, getLastContactDate } from '../services/storageService';
 import { PersonaType, RecruiterProfile, InteractionRecord, SentimentAnalysis, SearchFocus } from '../types';
 
@@ -58,6 +58,17 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
     } catch (e) { console.error(e); } 
     finally { setIsMsgLoading(false); }
   };
+  
+  const handleWhatsApp = async (rec: RecruiterProfile) => {
+      if (rec.phone) {
+          const text = await generateWhatsAppMessage(rec.name, rec.company, rec.role);
+          const url = `https://wa.me/${rec.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`;
+          window.open(url, '_blank');
+      } else {
+          const q = `site:linkedin.com/in "${rec.name}" "${rec.company}" phone OR mobile OR contact`;
+          window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`, '_blank');
+      }
+  }
 
   const handleAnalyzeReply = async () => {
       setIsAnalyzing(true);
@@ -82,15 +93,16 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
   }
 
   const getCategoryBadge = (cat?: string) => {
-      if (cat === 'A') return <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30"><Zap size={10}/> High Priority</span>;
-      if (cat === 'B') return <span className="flex items-center gap-1 text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">Active</span>;
-      return <span className="flex items-center gap-1 text-xs bg-slate-700/50 text-slate-400 px-2 py-0.5 rounded border border-slate-600">Corporate</span>;
+      if (cat === 'A') return <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-bold"><Zap size={10}/> PRIORITY</span>;
+      if (cat === 'B') return <span className="flex items-center gap-1 text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 font-bold">ACTIVE</span>;
+      return <span className="flex items-center gap-1 text-xs bg-slate-700/50 text-slate-400 px-2 py-0.5 rounded border border-slate-600">HR</span>;
   }
 
+  // Zero Hallucination: If no direct link, construct a precise search URL
   const getSmartSearchLink = (name: string, company: string, type: 'linkedin' | 'email') => {
       const q = type === 'linkedin' 
-        ? `site:linkedin.com/in ${name} ${company} recruiter`
-        : `${name} ${company} email contact`;
+        ? `site:linkedin.com/in "${name}" "${company}"`
+        : `"${name}" "${company}" email contact`;
       return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
   }
 
@@ -161,13 +173,13 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                 {/* Left Panel */}
                 <div className="flex flex-col space-y-4 h-full overflow-hidden">
                     {view === 'search' && (
-                        <div className="bg-dark-card border border-dark-border p-6 rounded-xl shrink-0 space-y-4">
+                        <div className="bg-dark-card border border-dark-border p-6 rounded-xl shrink-0 space-y-4 shadow-lg">
                              <div className="flex items-center gap-2 text-xs text-slate-400">
-                                <Filter size={12}/> Role Target:
+                                <Filter size={12}/> Target Focus:
                                 <select 
                                     value={focus}
                                     onChange={(e) => setFocus(e.target.value as SearchFocus)}
-                                    className="bg-slate-800 text-white border border-slate-700 rounded px-2 py-1 outline-none"
+                                    className="bg-slate-800 text-white border border-slate-700 rounded px-2 py-1 outline-none cursor-pointer"
                                 >
                                     {Object.values(SearchFocus).map(f => <option key={f} value={f}>{f}</option>)}
                                 </select>
@@ -177,11 +189,11 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                                     type="text"
                                     value={companyQuery}
                                     onChange={(e) => setCompanyQuery(e.target.value)}
-                                    placeholder="Target Company (e.g. Careem, Etisalat)..."
+                                    placeholder="Target Company (e.g. Careem)..."
                                     className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-brand-500 outline-none"
                                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 />
-                                <button onClick={handleSearch} disabled={isLoading} className="bg-brand-600 text-white px-4 py-2 rounded-lg">
+                                <button onClick={handleSearch} disabled={isLoading} className="bg-brand-600 text-white px-4 py-2 rounded-lg shadow-lg shadow-brand-500/20">
                                     {isLoading ? <Loader2 className="animate-spin"/> : <Search/>}
                                 </button>
                             </div>
@@ -194,39 +206,40 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                             return (
                                 <div 
                                     key={idx} 
-                                    className={`p-5 rounded-xl border transition-all cursor-pointer relative ${warning ? 'border-red-500/50 bg-red-900/10' : 'bg-dark-card border-dark-border'} ${selectedRecruiter?.name === rec.name ? 'border-brand-500' : ''}`} 
+                                    className={`p-5 rounded-xl border transition-all cursor-pointer relative ${warning ? 'border-red-500/50 bg-red-900/10' : 'bg-dark-card border-dark-border'} ${selectedRecruiter?.name === rec.name ? 'border-brand-500 shadow-lg shadow-brand-500/10' : 'hover:border-slate-600'}`} 
                                     onClick={() => handleGenerate(rec)}
                                 >
                                     {warning && <div className="absolute top-2 right-2 text-[10px] text-red-400 flex items-center gap-1"><AlertCircle size={10}/> {warning}</div>}
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <div className="font-bold text-white">{rec.name}</div>
-                                            <div className="text-sm text-brand-400">{rec.role}</div>
+                                            <div className="font-bold text-white text-lg">{rec.name}</div>
+                                            <div className="text-sm text-brand-400 font-medium">{rec.role}</div>
                                             <div className="text-xs text-slate-500">{rec.company}</div>
                                         </div>
                                         {getCategoryBadge(rec.category)}
                                     </div>
-                                    {rec.profileSnippet && <div className="mt-2 text-xs text-slate-400 italic line-clamp-2">"{rec.profileSnippet}"</div>}
+                                    {rec.profileSnippet && <div className="mt-3 text-xs text-slate-400 italic bg-slate-900/50 p-2 rounded border border-slate-800 line-clamp-2">"{rec.profileSnippet}"</div>}
                                     
                                     {/* Smart Contact Actions */}
-                                    <div className="flex gap-2 mt-3">
+                                    <div className="flex gap-2 mt-4">
                                         {rec.linkedin ? (
-                                            <a href={rec.linkedin} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs bg-[#0077b5]/20 text-[#0077b5] px-2 py-1 rounded border border-[#0077b5]/30 flex items-center gap-1 hover:bg-[#0077b5]/30"><Linkedin size={10}/> Profile</a>
+                                            <a href={rec.linkedin} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs bg-[#0077b5]/20 text-[#0077b5] px-3 py-1.5 rounded border border-[#0077b5]/30 flex items-center gap-1 hover:bg-[#0077b5]/30 font-bold"><Linkedin size={12}/> Profile</a>
                                         ) : (
-                                            <a href={getSmartSearchLink(rec.name, rec.company, 'linkedin')} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-600 flex items-center gap-1 hover:bg-slate-600"><Search size={10}/> Find Profile</a>
+                                            <a href={getSmartSearchLink(rec.name, rec.company, 'linkedin')} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs bg-slate-800 text-slate-300 px-3 py-1.5 rounded border border-slate-700 flex items-center gap-1 hover:bg-slate-700 font-bold"><Search size={12}/> Find Profile</a>
                                         )}
                                         {rec.email ? (
-                                            <a href={`mailto:${rec.email}`} onClick={(e) => e.stopPropagation()} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/30 flex items-center gap-1 hover:bg-orange-500/30"><Mail size={10}/> Email</a>
+                                            <a href={`mailto:${rec.email}`} onClick={(e) => e.stopPropagation()} className="text-xs bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded border border-orange-500/30 flex items-center gap-1 hover:bg-orange-500/30 font-bold"><Mail size={12}/> Email</a>
                                         ) : (
-                                             <a href={getSmartSearchLink(rec.name, rec.company, 'email')} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-600 flex items-center gap-1 hover:bg-slate-600"><Search size={10}/> Find Email</a>
+                                             <a href={getSmartSearchLink(rec.name, rec.company, 'email')} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs bg-slate-800 text-slate-300 px-3 py-1.5 rounded border border-slate-700 flex items-center gap-1 hover:bg-slate-700 font-bold"><Search size={12}/> Find Email</a>
                                         )}
+                                        <button onClick={(e) => {e.stopPropagation(); handleWhatsApp(rec)}} className="text-xs bg-green-600/20 text-green-400 px-3 py-1.5 rounded border border-green-600/30 flex items-center gap-1 hover:bg-green-600/30 font-bold"><MessageCircle size={12}/> {rec.phone ? 'WhatsApp' : 'Find Phone'}</button>
                                     </div>
                                 </div>
                             );
                         }) : history.map(h => (
                             <div key={h.id} className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 flex justify-between">
                                 <div>
-                                    <div className="text-white">{h.name}</div>
+                                    <div className="text-white font-bold">{h.name}</div>
                                     <div className="text-xs text-slate-500">{new Date(h.date).toLocaleDateString()}</div>
                                 </div>
                                 <CheckCircle size={16} className="text-green-500"/>
@@ -241,14 +254,14 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                         <>
                             <div className="p-4 border-b border-dark-border bg-slate-900/50 flex justify-between items-center">
                                 <h3 className="font-semibold text-white">Drafting for: {selectedRecruiter.name}</h3>
-                                <button onClick={markContacted} className="text-xs bg-green-600/20 text-green-400 px-3 py-1 rounded">Mark Contacted</button>
+                                <button onClick={markContacted} className="text-xs bg-green-600/20 text-green-400 px-3 py-1 rounded border border-green-600/30 hover:bg-green-600/40 transition-colors">Mark Contacted</button>
                             </div>
                             <div className="flex-1 p-6 overflow-y-auto">
-                                {isMsgLoading ? <Loader2 className="animate-spin text-brand-500 m-auto"/> : <div className="whitespace-pre-wrap font-mono text-sm text-slate-300">{generatedMsg}</div>}
+                                {isMsgLoading ? <div className="flex flex-col items-center justify-center h-full gap-2"><Loader2 className="animate-spin text-brand-500" size={32}/><span className="text-xs text-slate-500">Writing Hook...</span></div> : <div className="whitespace-pre-wrap font-mono text-sm text-slate-300 leading-relaxed">{generatedMsg}</div>}
                             </div>
                             {generatedMsg && (
                                 <div className="p-4 border-t border-dark-border">
-                                    <button onClick={() => navigator.clipboard.writeText(generatedMsg)} className="w-full bg-brand-600 text-white py-3 rounded-lg flex justify-center items-center gap-2 font-bold">
+                                    <button onClick={() => navigator.clipboard.writeText(generatedMsg)} className="w-full bg-brand-600 text-white py-3 rounded-lg flex justify-center items-center gap-2 font-bold hover:bg-brand-500 shadow-lg shadow-brand-500/20">
                                         <Copy size={18}/> Copy Message
                                     </button>
                                 </div>

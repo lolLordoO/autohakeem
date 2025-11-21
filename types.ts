@@ -7,10 +7,17 @@ export enum PersonaType {
 
 export enum SearchFocus {
   ALL = 'General / Broad',
-  MARKETING = 'Marketing, Content & Creative',
-  TECH = 'Tech, AI & Web3',
-  PMO = 'Project & Product Management',
-  CORP = 'Corporate & Enterprise'
+  MARKETING = 'Growth & Marketing',
+  CONTENT = 'Content & Creative',
+  TECH_AI = 'AI & Machine Learning',
+  WEB3 = 'Web3, Crypto & Blockchain',
+  PMO = 'Product & Project Mgmt',
+  SAAS = 'SaaS & Enterprise SW',
+  FINTECH = 'FinTech & Payments',
+  HEALTH = 'HealthTech & MedTech',
+  REAL_ESTATE = 'PropTech & Real Estate',
+  ECOMMERCE = 'E-commerce & Retail',
+  CONSTRUCTION = 'Construction & Eng.'
 }
 
 export interface UserProfile {
@@ -71,6 +78,13 @@ export interface GeneratedContent {
   fitScore?: number;
   reasoning?: string;
   emailSubject?: string;
+}
+
+export interface ATSAnalysis {
+  matchScore: number; // 0-100
+  missingKeywords: string[];
+  strengths: string[];
+  summary: string;
 }
 
 export interface ApplicationRecord extends JobOpportunity {

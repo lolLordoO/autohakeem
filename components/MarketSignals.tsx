@@ -32,8 +32,10 @@ const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
     }
 
     const verifySignal = (signal: MarketSignal) => {
+        // Specific News Search for verification
         const q = encodeURIComponent(`${signal.company} ${signal.signalType} UAE news`);
-        window.open(`https://www.google.com/search?q=${q}`, '_blank');
+        // Use tbs=qdr:m to filter for past month only
+        window.open(`https://www.google.com/search?q=${q}&tbs=qdr:m`, '_blank');
     }
 
     return (

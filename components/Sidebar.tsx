@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Search, Send, Briefcase, UserCircle, ListTodo, ChevronUp, ChevronDown, Copy, Phone, Mail, MapPin, ExternalLink, Globe, Zap, Calendar } from 'lucide-react';
+import { LayoutDashboard, Search, Send, Briefcase, UserCircle, ListTodo, ChevronUp, ChevronDown, Copy, Phone, Mail, MapPin, ExternalLink, Globe, Zap, Calendar, Settings } from 'lucide-react';
 import { USER_PROFILE } from '../constants';
 
 interface SidebarProps {
@@ -20,6 +20,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, toggleProfil
     { id: 'events', label: 'Events', icon: Calendar },
     { id: 'tracker', label: 'Offers & Tracker', icon: ListTodo },
     { id: 'agencies', label: 'Agencies', icon: UserCircle },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   return (
