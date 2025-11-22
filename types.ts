@@ -85,6 +85,7 @@ export interface ATSAnalysis {
   missingKeywords: string[];
   strengths: string[];
   summary: string;
+  suggestedBullet?: string; // New field for the "Fix It" feature
 }
 
 export interface ApplicationRecord extends JobOpportunity {

@@ -191,7 +191,24 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       const rawJobs = cleanAndParseJSON(response.text || "[]");
       if (!Array.isArray(rawJobs)) return [];
 
-      return rawJobs.map((job: any) => ({
+      // PRODUCTION HARDENING: De-duplicate and filter low quality results
+      const seen = new Set<string>();
+      const uniqueJobs = rawJobs.filter((job: any) => {
+          // Create a signature key based on title and company
+          const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
+          
+          // Filter out duplicates
+          if (seen.has(key)) return false;
+          
+          // Filter out bad results
+          if (!job.title || job.title.toLowerCase().includes('not found') || job.title.toLowerCase().includes('job title')) return false;
+          if (!job.company) return false;
+
+          seen.add(key);
+          return true;
+      });
+
+      return uniqueJobs.map((job: any) => ({
         id: Math.random().toString(36).substr(2, 9),
         title: job.title,
         company: job.company,
@@ -427,6 +444,20 @@ export const analyzeJobFit = async (jobDescription: string): Promise<ATSAnalysis
     });
 }
 
+export const generateResumeBullet = async (missingKeyword: string, jobTitle: string): Promise<string> => {
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Generate ONE high-impact resume bullet point for Abdul Hakeem's CV to address the missing skill: "${missingKeyword}".
+            Target Role: ${jobTitle}.
+            Context: Use his existing experience (${ABDUL_CV_TEXT.substring(0, 500)}) but frame it to highlight ${missingKeyword}.
+            Rule: Start with a strong verb. Use metrics if possible. Max 20 words.`
+        });
+        return response.text?.trim() || "";
+    });
+}
+
 export const generateApplicationMaterials = async (jobDescription: string, persona: PersonaType): Promise<GeneratedContent> => {
   return retryWrapper(async () => {
       const ai = getClient();
@@ -442,6 +473,7 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
         2. BAN CORPORATE FLUFF ("thrilled", "esteemed", "perfect fit"). Use strong verbs ("Deployed", "Scaled", "Built").
         3. INJECT METRICS: You MUST use the numbers from the CV ($2M funding, 40% MQLs, 150% traffic).
         4. TONE: Professional equal, not a desperate applicant.
+        5. CONCISENESS: Keep the 'emailDraft' strictly under 150 words to ensure compatibility with mailto links.
         
         JSON Output: { "emailSubject", "coverLetter", "emailDraft", "fitScore", "reasoning" }`,
         config: { responseMimeType: "application/json" }

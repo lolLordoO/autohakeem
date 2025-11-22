@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, MapPin, ExternalLink, Loader2, Plus, Mail, Globe, Sparkles, Linkedin, CheckCircle2, AlertTriangle, Building2, DollarSign, Filter, Copy } from 'lucide-react';
+import { Search, MapPin, ExternalLink, Loader2, Plus, Mail, Globe, Sparkles, Linkedin, CheckCircle2, AlertTriangle, Building2, DollarSign, Filter, Copy, Flame } from 'lucide-react';
 import { searchJobsInUAE, analyzeProfileForSearch } from '../services/geminiService';
 import { JobOpportunity, PersonaType, SearchFocus } from '../types';
 import { UAE_SEARCH_QUERIES } from '../constants';
@@ -57,7 +57,8 @@ export default function JobSearch({
 
   const getSmartSearchUrl = (job: JobOpportunity) => {
       // Construct a high-precision Google Search query to avoid 404s
-      const q = encodeURIComponent(`site:linkedin.com/jobs OR site:naukrigulf.com "${job.title}" "${job.company}" UAE`);
+      // Use intitle: to be more precise if possible
+      const q = encodeURIComponent(`intitle:"${job.title}" "${job.company}" site:linkedin.com/jobs OR site:naukrigulf.com`);
       return `https://www.google.com/search?q=${q}`;
   };
 
@@ -76,6 +77,18 @@ export default function JobSearch({
       if (url.includes('career') || url.includes('jobs')) return 'likely';
       return 'generic';
   };
+
+  const calculateRelevanceScore = (job: JobOpportunity): number => {
+      let score = 50; // Base score
+      const q = query.toLowerCase();
+      const title = job.title.toLowerCase();
+      
+      if (title.includes(q)) score += 20;
+      if (job.salaryEstimate && !job.salaryEstimate.includes('Market')) score += 15;
+      if (job.source.toLowerCase() !== 'web search') score += 15;
+      
+      return Math.min(99, score);
+  }
 
   const copyJobDetails = (job: JobOpportunity) => {
       const text = `${job.title} at ${job.company}\nLocation: ${job.location}\nSource: ${job.source}`;
@@ -170,6 +183,7 @@ export default function JobSearch({
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                 {results.map((job) => {
                     const linkQuality = getLinkQuality(job);
+                    const score = calculateRelevanceScore(job);
                     return (
                     <div key={job.id} className="group bg-dark-card border border-dark-border hover:border-brand-500/50 rounded-xl p-5 transition-all hover:shadow-xl hover:shadow-black/40 flex flex-col relative">
                         <button onClick={() => copyJobDetails(job)} className="absolute top-4 right-4 text-slate-600 hover:text-brand-500 transition-colors">
@@ -196,8 +210,8 @@ export default function JobSearch({
                                     <DollarSign size={10}/> {job.salaryEstimate}
                                 </span>
                             )}
-                            <span className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-300 border border-slate-700 flex items-center gap-1">
-                                {getSourceBadge(job.source)}
+                            <span className={`px-2 py-1 rounded text-xs border flex items-center gap-1 font-bold ${score > 80 ? 'bg-purple-900/20 text-purple-300 border-purple-800' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                                <Flame size={10}/> {score}% Match
                             </span>
                         </div>
 

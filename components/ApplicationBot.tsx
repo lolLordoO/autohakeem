@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save, ArrowRight, Globe, Wand2, Eraser, AlignLeft, RefreshCw, AlertCircle, BrainCircuit, Loader2, ScanSearch, TrendingUp } from 'lucide-react';
+import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save, ArrowRight, Globe, Wand2, Eraser, AlignLeft, RefreshCw, AlertCircle, BrainCircuit, Loader2, ScanSearch, TrendingUp, Hammer, Clipboard } from 'lucide-react';
 import { PersonaType, GeneratedContent, JobOpportunity, ATSAnalysis } from '../types';
-import { generateApplicationMaterials, refineContent, recommendPersona, analyzeJobFit } from '../services/geminiService';
+import { generateApplicationMaterials, refineContent, recommendPersona, analyzeJobFit, generateResumeBullet } from '../services/geminiService';
 import { saveApplication } from '../services/storageService';
 
 interface ApplicationBotProps {
@@ -22,7 +22,21 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
   const [isApplied, setIsApplied] = useState(false);
   const [recruiterEmail, setRecruiterEmail] = useState('');
   
+  // Fix It State
+  const [fixingKeyword, setFixingKeyword] = useState<string | null>(null);
+  const [generatedBullet, setGeneratedBullet] = useState<string | null>(null);
+
+  // Toast State
+  const [toast, setToast] = useState<{msg: string, type: 'success'|'error'} | null>(null);
+
   const mode = selectedJob?.applyEmail ? 'Email' : 'Portal';
+
+  useEffect(() => {
+      if (toast) {
+          const timer = setTimeout(() => setToast(null), 3000);
+          return () => clearTimeout(timer);
+      }
+  }, [toast]);
 
   useEffect(() => {
     if (selectedJob) {
@@ -43,6 +57,7 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
       try {
           const rec = await recommendPersona(jobDescription);
           setPersona(rec);
+          setToast({msg: `Switched to ${rec} persona based on JD`, type: 'success'});
       } catch(e) { console.error(e); } 
       finally { setIsBrainWorking(false); }
   }
@@ -50,11 +65,22 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
   const handleATSCheck = async () => {
       if (!jobDescription) return;
       setIsCheckingATS(true);
+      setGeneratedBullet(null);
       try {
           const result = await analyzeJobFit(jobDescription);
           setAtsResult(result);
       } catch(e) { console.error(e); }
       finally { setIsCheckingATS(false); }
+  }
+
+  const handleFixATS = async (keyword: string) => {
+      setFixingKeyword(keyword);
+      setGeneratedBullet(null);
+      try {
+          const bullet = await generateResumeBullet(keyword, selectedJob?.title || 'Target Role');
+          setGeneratedBullet(bullet);
+      } catch(e) { console.error(e); }
+      finally { setFixingKeyword(null); }
   }
 
   const handleGenerate = async () => {
@@ -80,16 +106,29 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
 
   const executeApplication = () => {
       if (!content) return;
+      
       if (mode === 'Email') {
-          // Use the edited recruiter email
           const targetEmail = recruiterEmail || "recruiter@example.com";
           const subject = encodeURIComponent(content.emailSubject || `Application: ${selectedJob?.title}`);
           const body = encodeURIComponent(content.emailDraft || '');
-          window.location.href = `mailto:${targetEmail}?subject=${subject}&body=${body}`;
+          const mailtoLink = `mailto:${targetEmail}?subject=${subject}&body=${body}`;
+
+          // Check for mailto limits (approx 2000 chars depends on browser)
+          if (mailtoLink.length > 2000) {
+              navigator.clipboard.writeText(content.emailDraft || '');
+              setToast({msg: "Email body too long for direct link. Copied to Clipboard!", type: 'error'});
+              // Still try to open with empty body or just subject
+              window.location.href = `mailto:${targetEmail}?subject=${subject}`;
+          } else {
+              window.location.href = mailtoLink;
+              setToast({msg: "Opening Email Client...", type: 'success'});
+          }
       } else {
           const targetUrl = selectedJob?.applyUrl || selectedJob?.url;
           if (targetUrl) window.open(targetUrl, '_blank');
+          else setToast({msg: "No URL found. Check job details.", type: 'error'});
       }
+
       if (!isApplied && selectedJob) {
         saveApplication(selectedJob, content, mode);
         setIsApplied(true);
@@ -103,7 +142,14 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-dark-bg">
+    <div className="h-screen flex flex-col bg-dark-bg relative">
+      {/* Toast Notification */}
+      {toast && (
+          <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-xl font-bold text-sm animate-in fade-in slide-in-from-top-4 ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-brand-600 text-white'}`}>
+              {toast.msg}
+          </div>
+      )}
+
       {/* JOB DOSSIER */}
       <div className="bg-dark-card border-b border-dark-border px-8 py-4 flex justify-between items-center shadow-md z-10">
          <div>
@@ -185,12 +231,31 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
                     
                     {atsResult.missingKeywords.length > 0 && (
                         <div>
-                            <div className="text-[10px] text-red-400 uppercase font-bold mb-1">Missing Keywords</div>
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="text-[10px] text-red-400 uppercase font-bold mb-2">Missing Keywords (Click to Fix)</div>
+                            <div className="flex flex-wrap gap-2 mb-3">
                                 {atsResult.missingKeywords.map((kw, i) => (
-                                    <span key={i} className="px-2 py-0.5 bg-red-900/20 text-red-300 border border-red-900/30 rounded text-[10px]">{kw}</span>
+                                    <button 
+                                        key={i} 
+                                        onClick={() => handleFixATS(kw)}
+                                        disabled={fixingKeyword !== null}
+                                        className="group flex items-center gap-1 px-2 py-1 bg-red-900/20 text-red-300 border border-red-900/30 rounded text-[10px] hover:bg-red-900/40 hover:border-red-500/50 transition-colors"
+                                    >
+                                        {kw}
+                                        {fixingKeyword === kw ? <Loader2 size={10} className="animate-spin"/> : <Hammer size={10} className="opacity-0 group-hover:opacity-100"/>}
+                                    </button>
                                 ))}
                             </div>
+                        </div>
+                    )}
+                    
+                    {generatedBullet && (
+                        <div className="bg-brand-900/20 border border-brand-500/30 rounded p-3 animate-in fade-in">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-bold text-brand-400">GENERATED BULLET POINT</span>
+                                <button onClick={() => copyToClipboard(generatedBullet, 'bullet')} className="text-brand-400 hover:text-white"><Copy size={12}/></button>
+                            </div>
+                            <p className="text-xs text-slate-300 font-mono">{generatedBullet}</p>
+                            {copied === 'bullet' && <span className="text-[10px] text-green-500 flex items-center gap-1 mt-1"><Check size={10}/> Copied</span>}
                         </div>
                     )}
                 </div>
@@ -206,7 +271,7 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
                 </div>
             )}
             
-            {content && content.fitScore > 0 && (
+            {content && content.fitScore && content.fitScore > 0 && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                     {/* Refinement Bar */}
                     <div className="flex gap-2 overflow-x-auto pb-2">
