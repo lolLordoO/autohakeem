@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save, ArrowRight, Globe, Wand2, Eraser, AlignLeft, RefreshCw, AlertCircle, BrainCircuit, Loader2, ScanSearch, TrendingUp, Hammer, Clipboard } from 'lucide-react';
 import { PersonaType, GeneratedContent, JobOpportunity, ATSAnalysis } from '../types';
 import { generateApplicationMaterials, refineContent, recommendPersona, analyzeJobFit, generateResumeBullet } from '../services/geminiService';
-import { saveApplication } from '../services/storageService';
+import { saveApplication, saveDraft, getDraft } from '../services/storageService';
 
 interface ApplicationBotProps {
   selectedJob: JobOpportunity | null;
@@ -37,6 +37,27 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
           return () => clearTimeout(timer);
       }
   }, [toast]);
+
+  // Load draft from storage on mount if no job selected
+  useEffect(() => {
+      if (!selectedJob) {
+          const draft = getDraft();
+          if (draft) {
+              setJobDescription(draft.jd);
+              setContent(draft.content);
+          }
+      }
+  }, []);
+
+  // Auto-Save Draft
+  useEffect(() => {
+      if (jobDescription || content) {
+          const timer = setTimeout(() => {
+              saveDraft(jobDescription, content);
+          }, 2000);
+          return () => clearTimeout(timer);
+      }
+  }, [jobDescription, content]);
 
   useEffect(() => {
     if (selectedJob) {
@@ -165,7 +186,7 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
                      </div>
                  </div>
              ) : (
-                 <h2 className="text-lg font-bold text-slate-500">No Active Job Selected</h2>
+                 <h2 className="text-lg font-bold text-slate-500">No Active Job Selected (Draft Mode)</h2>
              )}
          </div>
          

@@ -1,11 +1,20 @@
 
-import { ApplicationRecord, JobOpportunity, GeneratedContent, InteractionRecord, VisaDetails, MarketSignal, TechEvent } from '../types';
+import { ApplicationRecord, JobOpportunity, GeneratedContent, InteractionRecord, VisaDetails, MarketSignal, TechEvent, RecruiterProfile, AgencyProfile, DailyGoals } from '../types';
 
 const APPS_KEY = 'autohakeem_applications';
 const INTERACTIONS_KEY = 'autohakeem_interactions';
 const VISA_KEY = 'autohakeem_visa';
 const SIGNALS_KEY = 'autohakeem_signals';
 const EVENTS_KEY = 'autohakeem_events';
+
+// NEW KEYS FOR PERSISTENCE
+const JOB_RESULTS_KEY = 'autohakeem_job_results';
+const JOB_QUERY_KEY = 'autohakeem_job_query';
+const RECRUITER_RESULTS_KEY = 'autohakeem_recruiter_results';
+const RECRUITER_QUERY_KEY = 'autohakeem_recruiter_query';
+const AGENCY_RESULTS_KEY = 'autohakeem_agency_results';
+const DRAFT_KEY = 'autohakeem_current_draft';
+const GOALS_KEY = 'autohakeem_daily_goals';
 
 // --- Applications ---
 
@@ -26,7 +35,7 @@ export const saveApplication = (
 ) => {
   const apps = getApplications();
   const exists = apps.find(a => a.id === job.id);
-  if (exists) return;
+  if (exists) return exists; // Return existing if duplicate
 
   const newApp: ApplicationRecord = {
     ...job,
@@ -37,6 +46,10 @@ export const saveApplication = (
   };
 
   localStorage.setItem(APPS_KEY, JSON.stringify([newApp, ...apps]));
+  
+  // Update Daily Goals
+  incrementDailyGoal('applicationsSent');
+  
   return newApp;
 };
 
@@ -86,6 +99,10 @@ export const saveInteraction = (name: string, type: 'Agency' | 'Recruiter', deta
         status: 'Contacted'
     };
     localStorage.setItem(INTERACTIONS_KEY, JSON.stringify([newRecord, ...all]));
+    
+    // Update Daily Goals
+    if (type === 'Recruiter') incrementDailyGoal('recruitersContacted');
+    
     return newRecord;
 }
 
@@ -132,4 +149,93 @@ export const getSavedEvents = (): TechEvent[] => {
 
 export const saveEvents = (events: TechEvent[]) => {
     localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+}
+
+// --- PERSISTENCE HELPERS (New) ---
+
+export const saveJobSearchResults = (jobs: JobOpportunity[], query: string) => {
+    localStorage.setItem(JOB_RESULTS_KEY, JSON.stringify(jobs));
+    localStorage.setItem(JOB_QUERY_KEY, query);
+}
+
+export const getJobSearchResults = (): { jobs: JobOpportunity[], query: string } => {
+    const jobs = localStorage.getItem(JOB_RESULTS_KEY);
+    const query = localStorage.getItem(JOB_QUERY_KEY);
+    return {
+        jobs: jobs ? JSON.parse(jobs) : [],
+        query: query || ''
+    };
+}
+
+export const saveRecruiterResults = (recruiters: RecruiterProfile[], query: string) => {
+    localStorage.setItem(RECRUITER_RESULTS_KEY, JSON.stringify(recruiters));
+    localStorage.setItem(RECRUITER_QUERY_KEY, query);
+}
+
+export const getRecruiterResults = (): { recruiters: RecruiterProfile[], query: string } => {
+    const recs = localStorage.getItem(RECRUITER_RESULTS_KEY);
+    const query = localStorage.getItem(RECRUITER_QUERY_KEY);
+    return {
+        recruiters: recs ? JSON.parse(recs) : [],
+        query: query || ''
+    };
+}
+
+export const saveAgencyResults = (agencies: AgencyProfile[]) => {
+    localStorage.setItem(AGENCY_RESULTS_KEY, JSON.stringify(agencies));
+}
+
+export const getAgencyResults = (): AgencyProfile[] => {
+    const ag = localStorage.getItem(AGENCY_RESULTS_KEY);
+    return ag ? JSON.parse(ag) : [];
+}
+
+export const saveDraft = (jd: string, content: GeneratedContent | null) => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ jd, content }));
+}
+
+export const getDraft = (): { jd: string, content: GeneratedContent | null } | null => {
+    const d = localStorage.getItem(DRAFT_KEY);
+    return d ? JSON.parse(d) : null;
+}
+
+// --- DAILY GOALS (New) ---
+
+export const getDailyGoals = (): DailyGoals => {
+    const today = new Date().toISOString().split('T')[0];
+    const stored = localStorage.getItem(GOALS_KEY);
+    
+    if (stored) {
+        const goals: DailyGoals = JSON.parse(stored);
+        if (goals.date === today) {
+            return goals;
+        } else {
+            // New day, reset counts but keep streak if consecutive
+            const lastDate = new Date(goals.date);
+            const diffDays = Math.floor((new Date().getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
+            return {
+                date: today,
+                applicationsSent: 0,
+                recruitersContacted: 0,
+                streak: diffDays <= 1 ? goals.streak : 0 // Keep streak if yesterday, else reset
+            };
+        }
+    }
+    
+    return { date: today, applicationsSent: 0, recruitersContacted: 0, streak: 0 };
+}
+
+const incrementDailyGoal = (key: 'applicationsSent' | 'recruitersContacted') => {
+    const goals = getDailyGoals();
+    goals[key]++;
+    
+    // Check if daily target met (5 apps, 5 recruiters) to increment streak logic could go here
+    // For now simple increment
+    if (goals.applicationsSent >= 5 && goals.recruitersContacted >= 5 && goals.streak === 0) {
+        // First time hitting goals today? maybe logic for streak
+    }
+    
+    localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
+    // Dispatch event to update UI
+    window.dispatchEvent(new Event('goals-updated'));
 }

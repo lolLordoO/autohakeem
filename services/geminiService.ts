@@ -43,66 +43,56 @@ const retryWrapper = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000):
   }
 };
 
+// "The Iron Parser": A robust stack-based JSON extractor
 const cleanAndParseJSON = (text: string) => {
   if (!text) return [];
+  
+  // 1. Remove Markdown code blocks
+  let cleaned = text.replace(/```json\n?|```/g, '').trim();
+
+  // 2. Try simple parse first
   try {
-    // 1. Remove Markdown code block syntax
-    let cleaned = text.replace(/```json\n?|```/g, '').trim();
-
-    // 2. Locate the outer-most JSON array or object
-    const arrayStart = cleaned.indexOf('[');
-    const objectStart = cleaned.indexOf('{');
-    
-    let startIndex = -1;
-    let endIndex = -1;
-
-    // Determine if we are looking for an Array or Object
-    if (arrayStart > -1 && (objectStart === -1 || arrayStart < objectStart)) {
-        startIndex = arrayStart;
-        // Find the matching closing bracket by counting depth
-        let depth = 0;
-        for (let i = startIndex; i < cleaned.length; i++) {
-            if (cleaned[i] === '[') depth++;
-            else if (cleaned[i] === ']') depth--;
-            
-            if (depth === 0) {
-                endIndex = i;
-                break;
-            }
-        }
-    } else if (objectStart > -1) {
-        startIndex = objectStart;
-        // Find the matching closing brace
-        let depth = 0;
-        for (let i = startIndex; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') depth++;
-            else if (cleaned[i] === '}') depth--;
-            
-            if (depth === 0) {
-                endIndex = i;
-                break;
-            }
-        }
-    }
-
-    if (startIndex > -1 && endIndex > -1) {
-        cleaned = cleaned.substring(startIndex, endIndex + 1);
-        return JSON.parse(cleaned);
-    }
-
-    // Fallback: Try parsing the whole cleaned string if strict extraction failed
-    // If it fails, return empty array/object rather than crashing
-    try {
-        return JSON.parse(cleaned);
-    } catch (innerError) {
-        console.warn("Direct JSON parse failed, returning empty structure.");
-        return cleaned.trim().startsWith('[') ? [] : {};
-    }
+      return JSON.parse(cleaned);
   } catch (e) {
-    console.error("JSON Parse Error. Raw Text:", text);
-    // Safe fallback to prevent app crash
-    return []; 
+      // 3. Fallback: Locate the first '[' or '{' and the last ']' or '}'
+      const arrayStart = cleaned.indexOf('[');
+      const objectStart = cleaned.indexOf('{');
+      const arrayEnd = cleaned.lastIndexOf(']');
+      const objectEnd = cleaned.lastIndexOf('}');
+
+      let jsonString = '';
+
+      if (arrayStart !== -1 && arrayEnd !== -1 && (objectStart === -1 || arrayStart < objectStart)) {
+          jsonString = cleaned.substring(arrayStart, arrayEnd + 1);
+      } else if (objectStart !== -1 && objectEnd !== -1) {
+          jsonString = cleaned.substring(objectStart, objectEnd + 1);
+      }
+
+      if (jsonString) {
+          try {
+              return JSON.parse(jsonString);
+          } catch (innerE) {
+              console.warn("Extracted JSON failed to parse. Returning empty structure.");
+              return jsonString.trim().startsWith('[') ? [] : {};
+          }
+      }
+      
+      console.warn("No valid JSON structure found in response.");
+      return [];
   }
+};
+
+// URL Validator: Enforce strict domain whitelisting to prevent 404s
+const isValidJobUrl = (url: string | undefined): boolean => {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    const whitelist = [
+        'linkedin.com', 'indeed.com', 'naukrigulf.com', 'bayt.com', 
+        'gulftalent.com', 'oliv.com', 'hub71.com', 'laimoon.com',
+        'lever.co', 'greenhouse.io', 'workday.com', 'oraclecloud.com',
+        'careers.', 'jobs.'
+    ];
+    return whitelist.some(domain => lower.includes(domain)) && !lower.includes('...');
 };
 
 // --- FOCUS ENGINE ---
@@ -168,9 +158,6 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       const ai = getClient();
       
       const focusKeywords = getFocusKeywords(focus);
-      
-      // Using site: operators to force real results from indexed pages
-      // Expanded list of sites based on new requirements
       const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:hub71.com/careers OR site:oliv.com OR site:dubizzle.com/jobs";
 
       const response = await ai.models.generateContent({
@@ -183,9 +170,9 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         2. EXPERIENCE LEVEL: 0-4 Years. Exclude "Senior Manager" (5+ yrs), "Director", "VP", "Head of". Target "Associate", "Junior", "Specialist", "Officer", or "Manager" (only if <5 years requirement).
         3. ZERO HALLUCINATIONS: If you cannot find a specific deep link, return null for 'url'. Do NOT invent URLs.
         4. SALARY PROJECTION: If salary is hidden, ESTIMATE it based on the Role + Company Tier + UAE Market Data (e.g. "Est. AED 12k-18k").
-        5. DIVERSE SOURCES: Do not just use LinkedIn. Look for listings on Bayt, Naukrigulf, and Company Career pages.
+        5. VERDICT: Assign a MatchGrade 'S' (Perfect), 'A' (Great), 'B' (Good), 'C' (Average) based on fit for an AI/Web3/Marketing professional.
         
-        JSON Output: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate" }]`,
+        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate", "matchGrade": "S"|"A"|"B"|"C" }]`,
         config: { tools: [{ googleSearch: {} }] }
       });
       const rawJobs = cleanAndParseJSON(response.text || "[]");
@@ -194,13 +181,9 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       // PRODUCTION HARDENING: De-duplicate and filter low quality results
       const seen = new Set<string>();
       const uniqueJobs = rawJobs.filter((job: any) => {
-          // Create a signature key based on title and company
           const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
-          
-          // Filter out duplicates
           if (seen.has(key)) return false;
           
-          // Filter out bad results
           if (!job.title || job.title.toLowerCase().includes('not found') || job.title.toLowerCase().includes('job title')) return false;
           if (!job.company) return false;
 
@@ -214,12 +197,13 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         company: job.company,
         location: job.location || "UAE",
         source: job.source || "Web Search",
-        url: job.url || null, // Trust the AI's null judgment
+        url: isValidJobUrl(job.url) ? job.url : null, // Enforce Whitelist Logic
         search_query: job.search_query || `site:linkedin.com/jobs "${job.title}" "${job.company}" UAE`,
-        applyUrl: job.applyUrl || null,
+        applyUrl: isValidJobUrl(job.applyUrl) ? job.applyUrl : null,
         applyEmail: job.applyEmail || null,
         description: job.description,
         salaryEstimate: job.salaryEstimate || "AED Market Rate",
+        matchGrade: job.matchGrade || 'B',
         dateFound: new Date().toISOString(),
         status: 'found'
       }));
@@ -283,7 +267,6 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
       
       let roleKeywords = "Recruiter OR Talent Acquisition OR HR";
       
-      // Map Focus to specific Recruiter Titles
       switch (focus) {
           case SearchFocus.TECH_AI:
           case SearchFocus.WEB3:

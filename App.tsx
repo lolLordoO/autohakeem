@@ -13,6 +13,7 @@ import Settings from './components/Settings';
 import { JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from './types';
 import { USER_PROFILE } from './constants';
 import { Mail, MapPin, Globe, Copy, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
+import { getJobSearchResults, saveJobSearchResults, getRecruiterResults, saveRecruiterResults, getAgencyResults, saveAgencyResults } from './services/storageService';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -20,11 +21,41 @@ const App: React.FC = () => {
   const [persona, setPersona] = useState<PersonaType>(PersonaType.MARKETING);
   const [showProfileHud, setShowProfileHud] = useState(false);
   
+  // Persistent States
   const [jobSearchResults, setJobSearchResults] = useState<JobOpportunity[]>([]);
   const [jobSearchQuery, setJobSearchQuery] = useState('');
+  
   const [recruiterResults, setRecruiterResults] = useState<RecruiterProfile[]>([]);
   const [recruiterQuery, setRecruiterQuery] = useState('');
+  
   const [agencyResults, setAgencyResults] = useState<AgencyProfile[]>([]);
+
+  // Load from Storage on Mount
+  useEffect(() => {
+      const savedJobs = getJobSearchResults();
+      setJobSearchResults(savedJobs.jobs);
+      setJobSearchQuery(savedJobs.query);
+
+      const savedRecs = getRecruiterResults();
+      setRecruiterResults(savedRecs.recruiters);
+      setRecruiterQuery(savedRecs.query);
+
+      setAgencyResults(getAgencyResults());
+  }, []);
+
+  // Save to Storage on Update
+  useEffect(() => {
+      if (jobSearchResults.length > 0) saveJobSearchResults(jobSearchResults, jobSearchQuery);
+  }, [jobSearchResults, jobSearchQuery]);
+
+  useEffect(() => {
+      if (recruiterResults.length > 0) saveRecruiterResults(recruiterResults, recruiterQuery);
+  }, [recruiterResults, recruiterQuery]);
+  
+  useEffect(() => {
+      if (agencyResults.length > 0) saveAgencyResults(agencyResults);
+  }, [agencyResults]);
+
 
   // Global Error State
   const [globalError, setGlobalError] = useState<{type: string, message: string} | null>(null);
@@ -47,6 +78,12 @@ const App: React.FC = () => {
       setActiveTab('outreach');
   }
 
+  // Cross-Pollination Logic
+  const handleHuntRecruiters = (company: string) => {
+      setRecruiterQuery(company);
+      setActiveTab('outreach');
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard />;
@@ -61,6 +98,7 @@ const App: React.FC = () => {
             setResults={setJobSearchResults}
             query={jobSearchQuery}
             setQuery={setJobSearchQuery}
+            onHuntRecruiters={handleHuntRecruiters}
           />
         );
       case 'apply': return <ApplicationBot selectedJob={selectedJob} />;

@@ -31,6 +31,8 @@ export interface UserProfile {
   cvText: string;
 }
 
+export type MatchGrade = 'S' | 'A' | 'B' | 'C'; // S = Perfect, C = Low
+
 export interface JobOpportunity {
   id: string;
   title: string;
@@ -45,6 +47,7 @@ export interface JobOpportunity {
   salaryEstimate?: string; // e.g. "AED 15,000 - 20,000"
   dateFound: string;
   status: 'found' | 'applied' | 'interviewing' | 'rejected' | 'offer';
+  matchGrade?: MatchGrade; // New AI Verdict
 }
 
 export interface RecruiterProfile {
@@ -85,7 +88,7 @@ export interface ATSAnalysis {
   missingKeywords: string[];
   strengths: string[];
   summary: string;
-  suggestedBullet?: string; // New field for the "Fix It" feature
+  suggestedBullet?: string;
 }
 
 export interface ApplicationRecord extends JobOpportunity {
@@ -104,8 +107,6 @@ export interface InteractionRecord {
   details: string; 
   status: 'Contacted';
 }
-
-// --- NEW MODULE TYPES ---
 
 export interface MarketSignal {
   id: string;
@@ -152,6 +153,13 @@ export interface OfferEvaluation {
   growthPotential: number; // 1-10
   totalScore: number; // 0-100
   recommendation: string;
+}
+
+export interface DailyGoals {
+    date: string;
+    applicationsSent: number; // Target 5
+    recruitersContacted: number; // Target 5
+    streak: number;
 }
 
 // State Types

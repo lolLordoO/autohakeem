@@ -1,17 +1,24 @@
 
 import React, { useEffect, useState } from 'react';
-import { Activity, Target, FileText, Send, TrendingUp, Clock, CheckSquare, Settings, RotateCcw, CalendarDays, ExternalLink } from 'lucide-react';
+import { Activity, Target, FileText, Send, TrendingUp, Clock, CheckSquare, Settings, RotateCcw, CalendarDays, ExternalLink, Trophy, Flame } from 'lucide-react';
 import { USER_PROFILE } from '../constants';
-import { getStats, getVisaDetails, saveVisaDetails } from '../services/storageService';
-import { VisaDetails } from '../types';
+import { getStats, getVisaDetails, saveVisaDetails, getDailyGoals } from '../services/storageService';
+import { VisaDetails, DailyGoals } from '../types';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState({ total: 0, interviewing: 0, applied: 0, rejected: 0, offers: 0 });
   const [visa, setVisa] = useState<VisaDetails>(getVisaDetails());
   const [showVisaSettings, setShowVisaSettings] = useState(false);
+  const [goals, setGoals] = useState<DailyGoals>({ date: '', applicationsSent: 0, recruitersContacted: 0, streak: 0 });
 
   useEffect(() => {
     setStats(getStats());
+    setGoals(getDailyGoals());
+    
+    // Listen for goal updates
+    const handleGoalUpdate = () => setGoals(getDailyGoals());
+    window.addEventListener('goals-updated', handleGoalUpdate);
+    return () => window.removeEventListener('goals-updated', handleGoalUpdate);
   }, []);
 
   const handleVisaUpdate = (key: keyof VisaDetails['documentsReady']) => {
@@ -50,6 +57,15 @@ const Dashboard: React.FC = () => {
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight">Mission Control</h2>
           <p className="text-zinc-500 mt-1 font-mono text-xs">SYSTEM STATUS: ONLINE</p>
+        </div>
+        <div className="flex items-center gap-4">
+             <div className="bg-brand-900/20 px-4 py-2 rounded-lg border border-brand-500/30 flex items-center gap-2">
+                 <Flame className="text-orange-500" size={18} fill="currentColor"/>
+                 <div>
+                     <div className="text-[10px] text-brand-300 font-bold uppercase">Daily Streak</div>
+                     <div className="text-white font-bold">{goals.streak} Days</div>
+                 </div>
+             </div>
         </div>
       </header>
 
@@ -118,6 +134,33 @@ const Dashboard: React.FC = () => {
 
           {/* MAIN STATS */}
           <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+             {/* Daily Goals Widget */}
+             <div className="col-span-2 bg-gradient-to-r from-slate-900 to-zinc-900 border border-zinc-800 p-6 rounded-xl flex items-center justify-between">
+                 <div className="flex items-center gap-4">
+                     <div className="p-3 bg-brand-600 rounded-full shadow-lg shadow-brand-500/30 text-white"><Trophy size={24}/></div>
+                     <div>
+                         <div className="text-white font-bold text-lg">Daily Goals</div>
+                         <div className="text-xs text-slate-400">Keep the momentum going!</div>
+                     </div>
+                 </div>
+                 <div className="flex gap-8">
+                     <div className="text-center">
+                         <div className="text-xs text-slate-500 mb-1 uppercase font-bold">Applications</div>
+                         <div className="flex items-baseline gap-1 justify-center">
+                             <span className={`text-2xl font-bold ${goals.applicationsSent >= 5 ? 'text-green-400' : 'text-white'}`}>{goals.applicationsSent}</span>
+                             <span className="text-sm text-slate-600">/ 5</span>
+                         </div>
+                     </div>
+                     <div className="text-center">
+                         <div className="text-xs text-slate-500 mb-1 uppercase font-bold">Recruiters</div>
+                         <div className="flex items-baseline gap-1 justify-center">
+                             <span className={`text-2xl font-bold ${goals.recruitersContacted >= 5 ? 'text-green-400' : 'text-white'}`}>{goals.recruitersContacted}</span>
+                             <span className="text-sm text-slate-600">/ 5</span>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+
              <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
                  <div className="flex justify-between items-start">
                      <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg"><FileText size={20}/></div>
@@ -137,28 +180,6 @@ const Dashboard: React.FC = () => {
                  <div className="mt-4">
                     <div className="text-3xl font-bold text-white">{stats.interviewing}</div>
                     <div className="text-xs text-zinc-500 mt-1">In progress</div>
-                 </div>
-             </div>
-
-             <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
-                 <div className="flex justify-between items-start">
-                     <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg"><Target size={20}/></div>
-                     <span className="text-zinc-500 text-[10px] uppercase font-bold">Offers</span>
-                 </div>
-                 <div className="mt-4">
-                    <div className="text-3xl font-bold text-white">{stats.offers}</div>
-                    <div className="text-xs text-zinc-500 mt-1">Secured</div>
-                 </div>
-             </div>
-
-             <div className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col justify-between hover:border-zinc-700 transition-colors">
-                 <div className="flex justify-between items-start">
-                     <div className="p-2 bg-brand-500/10 text-brand-500 rounded-lg"><TrendingUp size={20}/></div>
-                     <span className="text-zinc-500 text-[10px] uppercase font-bold">Momentum</span>
-                 </div>
-                 <div className="mt-4">
-                    <div className="text-3xl font-bold text-white">High</div>
-                    <div className="text-xs text-zinc-500 mt-1">Market response</div>
                  </div>
              </div>
           </div>
