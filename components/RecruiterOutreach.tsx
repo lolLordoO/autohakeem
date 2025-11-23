@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap, Filter, MessageCircle } from 'lucide-react';
+import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap, Filter, MessageCircle, FileText } from 'lucide-react';
 import { findRecruiters, generateRecruiterMessage, analyzeRecruiterReply, generateWhatsAppMessage } from '../services/geminiService';
 import { getInteractions, saveInteraction, getExcludedNames, getLastContactDate } from '../services/storageService';
 import { PersonaType, RecruiterProfile, InteractionRecord, SentimentAnalysis, SearchFocus } from '../types';
@@ -218,7 +218,13 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                                         </div>
                                         {getCategoryBadge(rec.category)}
                                     </div>
-                                    {rec.profileSnippet && <div className="mt-3 text-xs text-slate-400 italic bg-slate-900/50 p-2 rounded border border-slate-800 line-clamp-2">"{rec.profileSnippet}"</div>}
+                                    
+                                    {rec.recentPostSnippet && (
+                                        <div className="mt-3 text-xs bg-slate-900 p-2 rounded border border-slate-800 flex items-start gap-2">
+                                            <MessageSquare size={12} className="text-slate-500 mt-0.5"/>
+                                            <span className="text-slate-300 italic">"{rec.recentPostSnippet}"</span>
+                                        </div>
+                                    )}
                                     
                                     {/* Smart Contact Actions */}
                                     <div className="flex gap-2 mt-4">

@@ -217,7 +217,7 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
         const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (last 14 days only) for Hiring Signals.
+            contents: `Deep search UAE Business News (LAST 7 DAYS) for Hiring Signals.
             Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
             
             Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
@@ -298,9 +298,9 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
           1. DO NOT GUESS EMAILS. If not publicly found, return null.
           2. DO NOT GUESS LINKEDIN URLs. If not confirmed, return null.
           3. Categorize: A (Decision Maker/Head), B (Recruiter), C (HR Admin).
-          4. OUTPUT STRICT JSON ARRAY ONLY. If no one is found, return []. DO NOT write "I couldn't find...".
+          4. FIND RECENT ACTIVITY: Look for recent posts about "Hiring" or "Jobs".
           
-          JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category" }]`,
+          JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category", "recentPostSnippet" }]`,
           config: { tools: [{ googleSearch: {} }] }
       });
       return cleanAndParseJSON(response.text || "[]");
@@ -366,9 +366,10 @@ export const findAgencies = async (focus: SearchFocus, excludedNames: string[] =
             Sources: LinkedIn, Google Maps, Agency Directories.
             
             Constraint: Physical presence in Dubai or Abu Dhabi.
+            Look for ACTIVE JOB LISTINGS on their site/linkedin.
             
             CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. If none found, return [].
-            JSON Output: [{ "name", "focus", "email", "phone", "website", "location" }]`,
+            JSON Output: [{ "name", "focus", "email", "phone", "website", "location", "activeRoles": ["Role1", "Role2"] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         return cleanAndParseJSON(response.text || "[]");

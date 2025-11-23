@@ -12,7 +12,7 @@ const Events: React.FC = () => {
     useEffect(() => {
         const saved = getSavedEvents();
         if (saved.length > 0) setEvents(saved);
-        else handleScan();
+        // Auto-scan removed as per request
     }, []);
 
     const handleScan = async () => {
@@ -43,35 +43,45 @@ const Events: React.FC = () => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 overflow-y-auto pb-20">
-                {events.map(evt => (
-                    <div key={evt.id} className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col md:flex-row justify-between items-center gap-6 hover:border-purple-500/30 transition-all">
-                        <div className="flex-1">
-                            <div className="flex gap-2 mb-2">
-                                <span className="text-xs bg-purple-900/30 text-purple-300 px-2 py-1 rounded border border-purple-800">{evt.type}</span>
-                                <span className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">{evt.date}</span>
-                            </div>
-                            <h3 className="text-xl font-bold text-white mb-1">{evt.name}</h3>
-                            <div className="flex items-center gap-2 text-sm text-slate-400 mb-3">
-                                <MapPin size={14}/> {evt.location}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {evt.keyAttendees?.map((attendee, i) => (
-                                    <span key={i} className="text-xs text-slate-500 italic">#{attendee}</span>
-                                ))}
-                            </div>
-                        </div>
-                        {evt.url ? (
-                            <a href={evt.url} target="_blank" rel="noreferrer" className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold flex items-center gap-2 border border-slate-700 transition-colors">
-                                <ExternalLink size={16}/> RSVP
-                            </a>
-                        ) : (
-                            <a href={getSmartEventUrl(evt)} target="_blank" rel="noreferrer" className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-bold flex items-center gap-2 border border-slate-700 transition-colors">
-                                <Search size={16}/> Find Event
-                            </a>
-                        )}
+            <div className="flex-1 overflow-y-auto pb-20">
+                {events.length === 0 && !loading ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-500 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/10">
+                        <Calendar size={48} className="mb-4 opacity-20" />
+                        <p className="font-medium">No events loaded.</p>
+                        <p className="text-xs mt-2">Click "Scan Events" to find upcoming networking opportunities in UAE.</p>
                     </div>
-                ))}
+                ) : (
+                    <div className="grid grid-cols-1 gap-4">
+                        {events.map(evt => (
+                            <div key={evt.id} className="bg-dark-card border border-dark-border p-6 rounded-xl flex flex-col md:flex-row justify-between items-center gap-6 hover:border-purple-500/30 transition-all">
+                                <div className="flex-1">
+                                    <div className="flex gap-2 mb-2">
+                                        <span className="text-xs bg-purple-900/30 text-purple-300 px-2 py-1 rounded border border-purple-800">{evt.type}</span>
+                                        <span className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">{evt.date}</span>
+                                    </div>
+                                    <h3 className="text-xl font-bold text-white mb-1">{evt.name}</h3>
+                                    <div className="flex items-center gap-2 text-sm text-slate-400 mb-3">
+                                        <MapPin size={14}/> {evt.location}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {evt.keyAttendees?.map((attendee, i) => (
+                                            <span key={i} className="text-xs text-slate-500 italic">#{attendee}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                                {evt.url ? (
+                                    <a href={evt.url} target="_blank" rel="noreferrer" className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold flex items-center gap-2 border border-slate-700 transition-colors">
+                                        <ExternalLink size={16}/> RSVP
+                                    </a>
+                                ) : (
+                                    <a href={getSmartEventUrl(evt)} target="_blank" rel="noreferrer" className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-bold flex items-center gap-2 border border-slate-700 transition-colors">
+                                        <Search size={16}/> Find Event
+                                    </a>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

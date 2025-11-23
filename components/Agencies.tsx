@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Building2, Mail, Phone, Globe, RefreshCw, ArrowRight, Copy, CheckCircle, History, Filter } from 'lucide-react';
+import { Building2, Mail, Phone, Globe, RefreshCw, ArrowRight, Copy, CheckCircle, History, Filter, Briefcase } from 'lucide-react';
 import { findAgencies, draftAgencyOutreach } from '../services/geminiService';
 import { getInteractions, saveInteraction, getExcludedNames } from '../services/storageService';
 import { PersonaType, AgencyProfile, InteractionRecord, SearchFocus } from '../types';
@@ -102,8 +102,18 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
                             <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
                                 {results.map((agency, idx) => (
                                     <div key={idx} onClick={() => handleDraft(agency)} className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${selectedAgency?.name === agency.name ? 'bg-brand-900/20 border-brand-500' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`}>
-                                        <div className="font-medium text-white">{agency.name}</div>
+                                        <div className="flex justify-between items-start">
+                                            <div className="font-medium text-white">{agency.name}</div>
+                                            {agency.activeRoles && agency.activeRoles.length > 0 && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 rounded border border-green-500/30 flex items-center gap-1"><Briefcase size={8}/> Hiring</span>}
+                                        </div>
                                         <div className="text-xs text-slate-500 mt-1 line-clamp-1">{agency.focus}</div>
+                                        {agency.activeRoles && (
+                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                {agency.activeRoles.slice(0,2).map(r => (
+                                                    <span key={r} className="text-[10px] text-slate-400 bg-slate-800 px-1 rounded">{r}</span>
+                                                ))}
+                                            </div>
+                                        )}
                                         <div className="flex gap-2 mt-2">
                                             {agency.email && <span className="px-1.5 py-0.5 bg-orange-900/30 text-orange-400 text-[10px] rounded border border-orange-800">Email</span>}
                                             {agency.website && <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-[10px] rounded border border-blue-800">Web</span>}

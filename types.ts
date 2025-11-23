@@ -62,6 +62,7 @@ export interface RecruiterProfile {
   category?: 'A' | 'B' | 'C'; // A: Active/Tech, B: General, C: Corporate/Slow
   contacted?: boolean;
   lastContactDate?: string;
+  recentPostSnippet?: string; // New: What are they talking about?
 }
 
 export interface AgencyProfile {
@@ -71,6 +72,7 @@ export interface AgencyProfile {
   phone?: string;
   website?: string;
   location?: string;
+  activeRoles?: string[]; // New: List of active job titles found
 }
 
 export interface GeneratedContent {

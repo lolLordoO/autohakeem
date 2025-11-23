@@ -16,7 +16,7 @@ const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
     useEffect(() => {
         const saved = getSavedSignals();
         if (saved.length > 0) setSignals(saved);
-        else handleScan();
+        // Auto-scan removed as per request
     }, []);
 
     const handleScan = async () => {
@@ -50,50 +50,60 @@ const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto pb-20">
-                {signals.map(signal => (
-                    <div key={signal.id} className="bg-dark-card border border-dark-border p-5 rounded-xl hover:border-brand-500/50 transition-all group">
-                        <div className="flex justify-between items-start mb-2">
-                            <span className={`text-xs px-2 py-1 rounded font-bold uppercase ${
-                                signal.signalType === 'Funding' ? 'bg-green-500/20 text-green-400' :
-                                signal.signalType === 'Expansion' ? 'bg-blue-500/20 text-blue-400' :
-                                'bg-purple-500/20 text-purple-400'
-                            }`}>
-                                {signal.signalType}
-                            </span>
-                            <span className="text-xs text-slate-500">{new Date(signal.dateDetected).toLocaleDateString()}</span>
-                        </div>
-                        <h3 className="text-xl font-bold text-white mb-1">{signal.company}</h3>
-                        <p className="text-sm text-slate-400 mb-4 line-clamp-3">{signal.summary}</p>
-                        
-                        <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 mb-4">
-                            <div className="text-xs text-slate-500 uppercase mb-1">Recommended Targets</div>
-                            <div className="flex flex-wrap gap-2">
-                                {signal.actionableLeads.map(lead => (
-                                    <span key={lead} className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">
-                                        {lead}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => verifySignal(signal)}
-                                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium text-sm border border-slate-700 flex items-center justify-center gap-2"
-                                title="Verify this news on Google"
-                            >
-                                <ExternalLink size={16}/>
-                            </button>
-                            <button 
-                                onClick={() => onSignalAction(signal.company)}
-                                className="flex-1 py-2 bg-brand-600/20 hover:bg-brand-600 text-brand-400 hover:text-white border border-brand-500/30 rounded-lg font-bold text-sm transition-colors flex justify-center items-center gap-2"
-                            >
-                                <Target size={16}/> Hunt Recruiters
-                            </button>
-                        </div>
+            <div className="flex-1 overflow-y-auto pb-20">
+                {signals.length === 0 && !loading ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-500 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/10">
+                        <Zap size={48} className="mb-4 opacity-20" />
+                        <p className="font-medium">Market Pulse is waiting.</p>
+                        <p className="text-xs mt-2">Click "Scan Signals" to analyze recent UAE market movements.</p>
                     </div>
-                ))}
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {signals.map(signal => (
+                            <div key={signal.id} className="bg-dark-card border border-dark-border p-5 rounded-xl hover:border-brand-500/50 transition-all group">
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className={`text-xs px-2 py-1 rounded font-bold uppercase ${
+                                        signal.signalType === 'Funding' ? 'bg-green-500/20 text-green-400' :
+                                        signal.signalType === 'Expansion' ? 'bg-blue-500/20 text-blue-400' :
+                                        'bg-purple-500/20 text-purple-400'
+                                    }`}>
+                                        {signal.signalType}
+                                    </span>
+                                    <span className="text-xs text-slate-500">{new Date(signal.dateDetected).toLocaleDateString()}</span>
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-1">{signal.company}</h3>
+                                <p className="text-sm text-slate-400 mb-4 line-clamp-3">{signal.summary}</p>
+                                
+                                <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 mb-4">
+                                    <div className="text-xs text-slate-500 uppercase mb-1">Recommended Targets</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {signal.actionableLeads.map(lead => (
+                                            <span key={lead} className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">
+                                                {lead}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => verifySignal(signal)}
+                                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium text-sm border border-slate-700 flex items-center justify-center gap-2"
+                                        title="Verify this news on Google"
+                                    >
+                                        <ExternalLink size={16}/>
+                                    </button>
+                                    <button 
+                                        onClick={() => onSignalAction(signal.company)}
+                                        className="flex-1 py-2 bg-brand-600/20 hover:bg-brand-600 text-brand-400 hover:text-white border border-brand-500/30 rounded-lg font-bold text-sm transition-colors flex justify-center items-center gap-2"
+                                    >
+                                        <Target size={16}/> Hunt Recruiters
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
