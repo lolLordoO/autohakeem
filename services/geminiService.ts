@@ -452,21 +452,44 @@ export const generateResumeBullet = async (missingKeyword: string, jobTitle: str
 export const generateApplicationMaterials = async (jobDescription: string, persona: PersonaType): Promise<GeneratedContent> => {
   return retryWrapper(async () => {
       const ai = getClient();
+      
+      const prompt = `
+      ACT AS: A Top-Tier Career Consultant & Copywriter.
+      TASK: Write a highly persuasive, tailored Application Strategy for Abdul Hakeem for this JD.
+      
+      STEP 1: ANALYZE STRATEGY
+      - Identify the top 2-3 "Pain Points" in the JD (what problem are they hiring to solve?).
+      - Map Abdul's CV Metrics ($2M funding, 40% MQLs, 150% Traffic, etc.) as EVIDENCE that he solves these pains.
+      - Formulate a "Strategic Angle" (e.g., "The Growth-Focused Project Manager").
+      
+      STEP 2: WRITE CONTENT
+      - EMAIL DRAFT: Short (under 150 words). NO FLUFF.
+        - Structure: Hook (Company News/Trend) -> Bridge (My Metric) -> Value (I solve X) -> Ask (Chat?).
+        - TONE: "Peer-to-Peer", confident, humane. NOT "I am writing to apply".
+      - COVER LETTER: Deeper dive (300 words).
+        - Use "Hook-Value-Proof-CTA" framework.
+        - Must mention specific company name and role.
+      
+      INPUTS:
+      - PERSONA: ${persona}
+      - CV HIGHLIGHTS: ${ABDUL_CV_TEXT.substring(0, 1200)}
+      - JD: ${jobDescription.substring(0, 1000)}
+      
+      JSON OUTPUT FORMAT:
+      {
+        "strategicAngle": "One sentence summary of the pitch approach",
+        "whyFitSummary": "3 concise bullet points explaining why I am the perfect fit based on JD pain points",
+        "emailSubject": "Punchy subject line (e.g. 'Growth Strategy for [Company]')",
+        "emailDraft": "The short email text",
+        "coverLetter": "The full cover letter",
+        "fitScore": number (0-100),
+        "reasoning": "Brief explanation of the score"
+      }
+      `;
+
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Write Application (Cover Letter + Email) for Abdul Hakeem.
-        Persona: ${persona}.
-        CV Highlights: ${ABDUL_CV_TEXT.substring(0, 800)}.
-        JD: ${jobDescription.substring(0, 800)}.
-        
-        CRITICAL "HUMANE" WRITING RULES:
-        1. BAN THE PHRASE "I am writing to apply". Start with a "Hook" about the company/industry in UAE.
-        2. BAN CORPORATE FLUFF ("thrilled", "esteemed", "perfect fit"). Use strong verbs ("Deployed", "Scaled", "Built").
-        3. INJECT METRICS: You MUST use the numbers from the CV ($2M funding, 40% MQLs, 150% traffic).
-        4. TONE: Professional equal, not a desperate applicant.
-        5. CONCISENESS: Keep the 'emailDraft' strictly under 150 words to ensure compatibility with mailto links.
-        
-        JSON Output: { "emailSubject", "coverLetter", "emailDraft", "fitScore", "reasoning" }`,
+        contents: prompt,
         config: { responseMimeType: "application/json" }
       });
       return JSON.parse(response.text || "{}");
@@ -478,7 +501,9 @@ export const refineContent = async (content: GeneratedContent, instruction: stri
         const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Refine this content. Instruction: ${instruction}. JSON: ${JSON.stringify(content)}`,
+            contents: `Refine this content. Instruction: ${instruction}. 
+            Maintain the existing JSON structure and only update the text fields (emailDraft, coverLetter).
+            JSON Input: ${JSON.stringify(content)}`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");

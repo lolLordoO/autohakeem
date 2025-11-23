@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save, ArrowRight, Globe, Wand2, Eraser, AlignLeft, RefreshCw, AlertCircle, BrainCircuit, Loader2, ScanSearch, TrendingUp, Hammer, Clipboard } from 'lucide-react';
+import { Bot, FileText, Linkedin, Mail, Copy, Check, Sparkles, Trash2, CheckCircle, ExternalLink, Save, ArrowRight, Globe, Wand2, Eraser, AlignLeft, RefreshCw, AlertCircle, BrainCircuit, Loader2, ScanSearch, TrendingUp, Hammer, Clipboard, Lightbulb } from 'lucide-react';
 import { PersonaType, GeneratedContent, JobOpportunity, ATSAnalysis } from '../types';
 import { generateApplicationMaterials, refineContent, recommendPersona, analyzeJobFit, generateResumeBullet } from '../services/geminiService';
 import { saveApplication, saveDraft, getDraft } from '../services/storageService';
@@ -294,6 +294,22 @@ const ApplicationBot: React.FC<ApplicationBotProps> = ({ selectedJob }) => {
             
             {content && content.fitScore && content.fitScore > 0 && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                    {/* STRATEGIC INSIGHT CARD (New) */}
+                    {(content.strategicAngle || content.whyFitSummary) && (
+                        <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-xl">
+                            <h4 className="text-sm font-bold text-indigo-400 flex items-center gap-2 mb-2"><Lightbulb size={16}/> Strategic Insight</h4>
+                            {content.strategicAngle && <p className="text-xs text-white font-medium mb-2">Angle: "{content.strategicAngle}"</p>}
+                            {content.whyFitSummary && (
+                                <div className="text-xs text-indigo-200 leading-relaxed space-y-1">
+                                    {Array.isArray(content.whyFitSummary) 
+                                        ? content.whyFitSummary.map((pt:string, i:number) => <div key={i}>• {pt}</div>)
+                                        : content.whyFitSummary.split('\n').map((pt:string, i:number) => <div key={i}>{pt}</div>)
+                                    }
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Refinement Bar */}
                     <div className="flex gap-2 overflow-x-auto pb-2">
                          <button disabled={isRefining} onClick={() => handleRefine("Make it shorter and punchier")} className="whitespace-nowrap px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-full text-xs text-slate-300 hover:border-brand-500 transition-colors flex items-center gap-1"><Wand2 size={12}/> Shorter</button>

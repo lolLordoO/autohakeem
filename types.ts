@@ -83,6 +83,9 @@ export interface GeneratedContent {
   fitScore?: number;
   reasoning?: string;
   emailSubject?: string;
+  // New Strategic Fields
+  strategicAngle?: string; // e.g. "Focus on ROI & MQL Growth"
+  whyFitSummary?: string; // Concise bullet points on why matched
 }
 
 export interface ATSAnalysis {
