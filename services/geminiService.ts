@@ -186,36 +186,59 @@ export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<st
 };
 
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
-  return smartCache(`jobs_${query}_${focus}`, () => retryWrapper(async () => {
+  // Use a date-based cache key to ensure we fetch fresh results every day
+  const dateKey = new Date().toISOString().split('T')[0];
+  
+  return smartCache(`jobs_${query}_${focus}_${dateKey}`, () => retryWrapper(async () => {
       const ai = getClient();
       
       const focusKeywords = getFocusKeywords(focus);
+      
+      // FRESHNESS LOGIC: Calculate date 30 days ago
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+      const dateString = oneMonthAgo.toISOString().split('T')[0];
+      
+      // Google Search "after:" operator helps enforce freshness at the source level
+      const freshnessOperator = `after:${dateString}`;
+      
       const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:hub71.com/careers OR site:oliv.com OR site:dubizzle.com/jobs";
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Find 30 REAL, LIVE job listings in the UAE matching: "${query} ${focusKeywords}".
-        Use these operators: ${searchOperators}.
+        contents: `Act as a Headhunter finding "Best Fit" jobs for this Candidate Profile:
+        "${ABDUL_CV_TEXT.substring(0, 500)}"
         
-        STRICT CRITERIA:
-        1. LOCATION: MUST be in UAE (Dubai, Abu Dhabi, Sharjah, etc). Exclude "Remote" if implies outside UAE.
-        2. EXPERIENCE LEVEL: 0-4 Years. Exclude "Senior Manager" (5+ yrs), "Director", "VP", "Head of". Target "Associate", "Junior", "Specialist", "Officer", or "Manager" (only if <5 years requirement).
-        3. ZERO HALLUCINATIONS: If you cannot find a specific deep link, return null for 'url'. Do NOT invent URLs.
-        4. SALARY PROJECTION: If salary is hidden, ESTIMATE it based on the Role + Company Tier + UAE Market Data (e.g. "Est. AED 12k 18k").
-        5. VERDICT: Assign a MatchGrade 'S' (Perfect), 'A' (Great), 'B' (Good), 'C' (Average) based on fit for an AI/Web3/Marketing professional.
+        TASK: Find 30 REAL, LIVE, FRESH job listings in the UAE matching: "${query} ${focusKeywords}".
+        
+        STRICT SEARCH CRITERIA:
+        1. FRESHNESS: Listings MUST be posted AFTER ${dateString} (Last 30 days). Ignore old/expired roles.
+        2. LOCATION: STRICTLY "United Arab Emirates", "Dubai", "Abu Dhabi", or "Sharjah".
+        3. EXPERIENCE: 0-4 Years only. Exclude "Senior Manager" (5+ yrs), "Director", "VP", "Head". 
+        4. BEST FIT: Prioritize roles matching candidate's AI, Web3, and Content Strategy skills.
+        
+        DATA INTEGRITY:
+        - ZERO HALLUCINATIONS: If you cannot find a verified deep link, return null for 'url'. Do NOT invent URLs.
+        - VERIFY DATES: Check the snippet for relative dates like "2 days ago", "1 week ago". Discard "2 months ago".
         
         JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate", "matchGrade": "S"|"A"|"B"|"C" }]`,
         config: { tools: [{ googleSearch: {} }] }
       });
+      
       const rawJobs = cleanAndParseJSON(response.text || "[]");
       if (!Array.isArray(rawJobs)) return [];
 
       const seen = new Set<string>();
       const uniqueJobs = rawJobs.filter((job: any) => {
+          // De-duplication key
           const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
+          
           if (seen.has(key)) return false;
+          
+          // Garbage Filtering
           if (!job.title || job.title.toLowerCase().includes('not found') || job.title.toLowerCase().includes('job title')) return false;
           if (!job.company) return false;
+          
           seen.add(key);
           return true;
       });
@@ -242,15 +265,24 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
 // --- INTELLIGENCE AGENTS ---
 
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
-    // Cache for 4 hours as market news doesn't change by the minute
-    return smartCache(`market_signals`, () => retryWrapper(async () => {
+    // Cache for 4 hours
+    return smartCache(`market_signals_7days`, () => retryWrapper(async () => {
         const ai = getClient();
+        
+        // Calculate date 7 days ago
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const dateStr = sevenDaysAgo.toISOString().split('T')[0];
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (LAST 30 DAYS) for Hiring Signals.
+            contents: `Deep search UAE Business News (LAST 7 DAYS) for Hiring Signals.
             Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
             Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
             Look for: Funding Rounds, New Office Openings, Product Launches, Contract Wins, Executive Hires, Stealth Startups.
+            
+            TIMEFRAME: News MUST be from ${dateStr} to TODAY (${new Date().toLocaleDateString()}).
+            
             CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
             JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1", "Role2"] }]`,
             config: { tools: [{ googleSearch: {} }] }
@@ -261,13 +293,24 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
 };
 
 export const findTechEvents = async (): Promise<TechEvent[]> => {
-    return smartCache(`tech_events`, () => retryWrapper(async () => {
+    return smartCache(`tech_events_next7days`, () => retryWrapper(async () => {
         const ai = getClient();
+        
+        // Calculate next 7 days window
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+        const windowStr = `${today.toLocaleDateString()} to ${nextWeek.toLocaleDateString()}`;
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah.
+            contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah happening in the NEXT 7 DAYS.
+            Current Date: ${today.toLocaleDateString()}.
+            Target Window: ${windowStr} ONLY.
+            
             Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs.
             Constraint: Physical events in UAE only.
+            
             CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
             JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
