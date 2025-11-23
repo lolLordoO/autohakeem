@@ -156,7 +156,8 @@ export default function JobSearch({
       {/* SPLIT PANE CONTENT */}
       <div className="flex-1 flex overflow-hidden">
           {/* LEFT: LIST VIEW */}
-          <div className={`${activeJob ? 'w-1/3 hidden lg:block border-r border-dark-border' : 'w-full'} overflow-y-auto custom-scrollbar bg-[#0B1221]`}>
+          {/* Constrain width to max-w-7xl when activeJob is null (List View Mode) */}
+          <div className={`${activeJob ? 'w-1/3 hidden lg:block border-r border-dark-border' : 'w-full max-w-7xl mx-auto'} overflow-y-auto custom-scrollbar bg-[#0B1221]`}>
                 {(isLoading || isAnalyzing) && results.length === 0 && (
                     <div className="flex flex-col justify-center items-center py-20 gap-4">
                         <Loader2 size={32} className="animate-spin text-brand-500"/>
@@ -171,7 +172,7 @@ export default function JobSearch({
                     </div>
                 )}
 
-                <div className="divide-y divide-slate-800">
+                <div className={`divide-y divide-slate-800 ${!activeJob ? 'border border-slate-800 rounded-xl my-4' : ''}`}>
                     {results.map((job) => (
                         <div 
                             key={job.id} 
@@ -179,7 +180,7 @@ export default function JobSearch({
                             className={`p-4 cursor-pointer hover:bg-slate-800/50 transition-colors group relative ${activeJob?.id === job.id ? 'bg-brand-900/10 border-l-2 border-brand-500' : 'border-l-2 border-transparent'}`}
                         >
                             <div className="flex justify-between items-start mb-1">
-                                <h3 className={`text-sm font-bold line-clamp-1 flex items-center ${activeJob?.id === job.id ? 'text-brand-400' : 'text-slate-200'}`}>
+                                <h3 className={`text-sm font-bold line-clamp-1 flex items-center gap-2 ${activeJob?.id === job.id ? 'text-brand-400' : 'text-slate-200'}`}>
                                     {job.title}
                                     {getRelevanceBadge(job)}
                                 </h3>
@@ -194,7 +195,7 @@ export default function JobSearch({
                                     )}
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={(e) => { e.stopPropagation(); window.open(getSmartSearchUrl(job), '_blank'); }} className="p-1.5 bg-slate-700 rounded text-slate-300 hover:text-white" title="Google Search"><Search size={12}/></button>
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(getSmartSearchUrl(job), '_blank'); }} className="p-1.5 bg-slate-700 rounded text-slate-300 hover:text-white flex items-center gap-1 text-[10px]" title="Google Search"><Search size={10}/> Google It</button>
                                 </div>
                             </div>
                         </div>
@@ -204,7 +205,7 @@ export default function JobSearch({
 
           {/* RIGHT: INSPECTOR VIEW */}
           {activeJob ? (
-              <div className="flex-1 bg-dark-card overflow-y-auto custom-scrollbar flex flex-col">
+              <div className="flex-1 bg-dark-card overflow-y-auto custom-scrollbar flex flex-col animate-in slide-in-from-right-4">
                   <div className="p-6 border-b border-dark-border bg-slate-900/50 sticky top-0 z-10 backdrop-blur-sm">
                       <div className="flex justify-between items-start mb-4">
                           <div>
@@ -279,11 +280,8 @@ export default function JobSearch({
                   </div>
               </div>
           ) : (
-              <div className="flex-1 hidden lg:flex flex-col items-center justify-center text-slate-600 bg-dark-card">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 shadow-xl">
-                       <ArrowRight size={24}/>
-                  </div>
-                  <p className="font-medium">Select a job to view details</p>
+              <div className="flex-1 hidden lg:flex flex-col items-center justify-center bg-dark-card">
+                 {/* Empty State */}
               </div>
           )}
       </div>

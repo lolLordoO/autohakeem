@@ -62,10 +62,12 @@ const cleanAndParseJSON = (text: string) => {
 
       let jsonString = '';
 
-      if (arrayStart !== -1 && arrayEnd !== -1 && (objectStart === -1 || arrayStart < objectStart)) {
-          jsonString = cleaned.substring(arrayStart, arrayEnd + 1);
+      if (arrayStart !== -1 && arrayEnd !== -1) {
+           // It's likely an array, even if there is text before/after
+           jsonString = cleaned.substring(arrayStart, arrayEnd + 1);
       } else if (objectStart !== -1 && objectEnd !== -1) {
-          jsonString = cleaned.substring(objectStart, objectEnd + 1);
+           // It's likely an object
+           jsonString = cleaned.substring(objectStart, objectEnd + 1);
       }
 
       if (jsonString) {
@@ -73,11 +75,12 @@ const cleanAndParseJSON = (text: string) => {
               return JSON.parse(jsonString);
           } catch (innerE) {
               console.warn("Extracted JSON failed to parse. Returning empty structure.");
+              // Fallback to empty if it looks like an array but failed
               return jsonString.trim().startsWith('[') ? [] : {};
           }
       }
       
-      console.warn("No valid JSON structure found in response.");
+      console.warn("No valid JSON structure found in response. Returning empty array.");
       return [];
   }
 };
@@ -295,10 +298,11 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
           Constraint: MUST be based in UAE (Dubai/Abu Dhabi). Do not return global heads in UK/USA.
           
           CRITICAL RULES:
-          1. DO NOT GUESS EMAILS. If not publicly found, return null.
-          2. DO NOT GUESS LINKEDIN URLs. If not confirmed, return null.
-          3. Categorize: A (Decision Maker/Head), B (Recruiter), C (HR Admin).
-          4. FIND RECENT ACTIVITY: Look for recent posts about "Hiring" or "Jobs".
+          1. OUTPUT STRICT JSON ONLY. NO CHAT, NO "Here are results", NO APOLOGIES.
+          2. IF NOTHING FOUND: Return [].
+          3. DO NOT GUESS EMAILS. If not publicly found, return null.
+          4. DO NOT GUESS LINKEDIN URLs. If not confirmed, return null.
+          5. Categorize: A (Decision Maker/Head), B (Recruiter), C (HR Admin).
           
           JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category", "recentPostSnippet" }]`,
           config: { tools: [{ googleSearch: {} }] }
@@ -420,8 +424,9 @@ export const analyzeJobFit = async (jobDescription: string): Promise<ATSAnalysis
             1. Calculate a Match Score (0-100) based on keyword overlap.
             2. List CRITICAL missing keywords/skills found in JD but not in CV.
             3. List strengths.
+            4. Provide an Action Plan (3 specific steps to improve fit).
 
-            JSON Output: { "matchScore": number, "missingKeywords": string[], "strengths": string[], "summary": string }`,
+            JSON Output: { "matchScore": number, "missingKeywords": string[], "strengths": string[], "summary": string, "actionPlan": string[] }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
