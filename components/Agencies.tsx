@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Mail, Phone, Globe, RefreshCw, ArrowRight, Copy, CheckCircle, History, Filter, Briefcase } from 'lucide-react';
 import { findAgencies, draftAgencyOutreach } from '../services/geminiService';
-import { getInteractions, saveInteraction, getExcludedNames } from '../services/storageService';
+import { getInteractions, saveInteraction, getExcludedNames, getUiState, saveUiState } from '../services/storageService';
 import { PersonaType, AgencyProfile, InteractionRecord, SearchFocus } from '../types';
 
 interface AgenciesProps {
@@ -22,11 +22,21 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
 
     useEffect(() => {
         setHistory(getInteractions('Agency'));
+        
+        // Load UI State
+        const state = getUiState();
+        if (state.agencyView) setActiveView(state.agencyView as any);
+        if (state.agencyFocus) setFocus(state.agencyFocus as any);
+        if (state.agencyDraft) setDraft(state.agencyDraft);
     }, []);
+
+    const updateView = (v: any) => { setActiveView(v); saveUiState({ agencyView: v }); }
+    const updateFocus = (f: any) => { setFocus(f); saveUiState({ agencyFocus: f }); }
+    const updateDraft = (d: string) => { setDraft(d); saveUiState({ agencyDraft: d }); }
 
     const loadNewAgencies = async () => {
         setLoading(true);
-        setActiveView('search');
+        updateView('search');
         const excluded = getExcludedNames('Agency');
         const data = await findAgencies(focus, excluded);
         setResults(data);
@@ -36,12 +46,12 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
     const handleDraft = async (agency: AgencyProfile) => {
         setSelectedAgency(agency);
         setIsDrafting(true);
-        setDraft("Drafting personalized outreach...");
+        updateDraft("Drafting personalized outreach...");
         try {
             const text = await draftAgencyOutreach(agency, persona);
-            setDraft(text);
+            updateDraft(text);
         } catch (e) {
-            setDraft("Error generating draft.");
+            updateDraft("Error generating draft.");
         } finally {
             setIsDrafting(false);
         }
@@ -54,7 +64,7 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
         setHistory(getInteractions('Agency'));
         setResults(results.filter(a => a.name !== selectedAgency.name));
         setSelectedAgency(null);
-        setDraft('');
+        updateDraft('');
     }
 
     return (
@@ -72,7 +82,7 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
                         <Filter size={12} className="text-slate-400"/>
                         <select 
                             value={focus}
-                            onChange={(e) => setFocus(e.target.value as SearchFocus)}
+                            onChange={(e) => updateFocus(e.target.value as SearchFocus)}
                             className="bg-transparent text-white text-xs outline-none font-medium cursor-pointer"
                         >
                             {Object.values(SearchFocus).map(f => <option key={f} value={f}>{f}</option>)}
@@ -80,8 +90,8 @@ const Agencies: React.FC<AgenciesProps> = ({ results, setResults }) => {
                      </div>
 
                     <div className="flex bg-slate-800 rounded-lg p-1">
-                        <button onClick={() => setActiveView('search')} className={`px-4 py-2 rounded-md text-sm ${activeView === 'search' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>Search New</button>
-                        <button onClick={() => setActiveView('history')} className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 ${activeView === 'history' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>
+                        <button onClick={() => updateView('search')} className={`px-4 py-2 rounded-md text-sm ${activeView === 'search' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>Search New</button>
+                        <button onClick={() => updateView('history')} className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 ${activeView === 'history' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>
                             <History size={14}/> History
                         </button>
                     </div>

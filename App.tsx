@@ -13,7 +13,7 @@ import Settings from './components/Settings';
 import { JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from './types';
 import { USER_PROFILE } from './constants';
 import { Mail, MapPin, Globe, Copy, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
-import { getJobSearchResults, saveJobSearchResults, getRecruiterResults, saveRecruiterResults, getAgencyResults, saveAgencyResults } from './services/storageService';
+import { getJobSearchResults, saveJobSearchResults, getRecruiterResults, saveRecruiterResults, getAgencyResults, saveAgencyResults, getUiState, saveUiState } from './services/storageService';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -41,6 +41,16 @@ const App: React.FC = () => {
       setRecruiterQuery(savedRecs.query);
 
       setAgencyResults(getAgencyResults());
+
+      // Load UI State (Tab, Last Job)
+      const uiState = getUiState();
+      if (uiState.activeTab) setActiveTab(uiState.activeTab);
+      
+      // Try to restore selected job if ID exists and we have results
+      if (uiState.lastSelectedJobId && savedJobs.jobs.length > 0) {
+          const found = savedJobs.jobs.find(j => j.id === uiState.lastSelectedJobId);
+          if (found) setSelectedJob(found);
+      }
   }, []);
 
   // Save to Storage on Update
@@ -56,6 +66,11 @@ const App: React.FC = () => {
       if (agencyResults.length > 0) saveAgencyResults(agencyResults);
   }, [agencyResults]);
 
+  // Persist Active Tab
+  useEffect(() => {
+      saveUiState({ activeTab });
+  }, [activeTab]);
+
 
   // Global Error State
   const [globalError, setGlobalError] = useState<{type: string, message: string} | null>(null);
@@ -70,6 +85,7 @@ const App: React.FC = () => {
 
   const handleSelectJob = (job: JobOpportunity) => {
     setSelectedJob(job);
+    saveUiState({ lastSelectedJobId: job.id });
     setActiveTab('apply');
   };
 

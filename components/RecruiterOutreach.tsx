@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Search, MessageSquare, UserPlus, Send, Loader2, Mail, Linkedin, Phone, Copy, History, CheckCircle, ExternalLink, AlertCircle, BrainCircuit, Zap, Filter, MessageCircle, FileText } from 'lucide-react';
 import { findRecruiters, generateRecruiterMessage, analyzeRecruiterReply, generateWhatsAppMessage } from '../services/geminiService';
-import { getInteractions, saveInteraction, getExcludedNames, getLastContactDate } from '../services/storageService';
+import { getInteractions, saveInteraction, getExcludedNames, getLastContactDate, getUiState, saveUiState } from '../services/storageService';
 import { PersonaType, RecruiterProfile, InteractionRecord, SentimentAnalysis, SearchFocus } from '../types';
 
 interface RecruiterOutreachProps {
@@ -34,7 +34,18 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
 
   useEffect(() => {
       setHistory(getInteractions('Recruiter'));
+      
+      // Load UI State
+      const state = getUiState();
+      if (state.recruiterView) setView(state.recruiterView as any);
+      if (state.recruiterFocus) setFocus(state.recruiterFocus as any);
+      if (state.recruiterReplyText) setReplyText(state.recruiterReplyText);
   }, []);
+
+  // Save UI State
+  const updateView = (v: any) => { setView(v); saveUiState({ recruiterView: v }); }
+  const updateFocus = (f: any) => { setFocus(f); saveUiState({ recruiterFocus: f }); }
+  const updateReplyText = (t: string) => { setReplyText(t); saveUiState({ recruiterReplyText: t }); }
 
   const handleSearch = async () => {
     if (!companyQuery) return;
@@ -113,11 +124,11 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
             <Users className="text-brand-500"/> Recruiter Headhunter
         </h2>
         <div className="flex bg-slate-800 rounded-lg p-1">
-            <button onClick={() => setView('search')} className={`px-4 py-2 rounded-md text-sm ${view === 'search' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>Search</button>
-            <button onClick={() => setView('intelligence')} className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 ${view === 'intelligence' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>
+            <button onClick={() => updateView('search')} className={`px-4 py-2 rounded-md text-sm ${view === 'search' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>Search</button>
+            <button onClick={() => updateView('intelligence')} className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 ${view === 'intelligence' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>
                 <BrainCircuit size={14}/> Intelligence
             </button>
-            <button onClick={() => setView('history')} className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 ${view === 'history' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>
+            <button onClick={() => updateView('history')} className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 ${view === 'history' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>
                 <History size={14}/> History
             </button>
         </div>
@@ -132,7 +143,7 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                         className="flex-1 bg-slate-900 border border-slate-800 rounded p-4 text-slate-300 focus:border-brand-500 outline-none resize-none"
                         placeholder="Paste their email or message here..."
                         value={replyText}
-                        onChange={(e) => setReplyText(e.target.value)}
+                        onChange={(e) => updateReplyText(e.target.value)}
                      />
                      <button onClick={handleAnalyzeReply} disabled={isAnalyzing || !replyText} className="mt-4 bg-brand-600 text-white py-3 rounded font-bold flex justify-center items-center gap-2">
                          {isAnalyzing ? <Loader2 className="animate-spin"/> : <BrainCircuit/>} Analyze & Draft Reply
@@ -178,7 +189,7 @@ const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                                 <Filter size={12}/> Target Focus:
                                 <select 
                                     value={focus}
-                                    onChange={(e) => setFocus(e.target.value as SearchFocus)}
+                                    onChange={(e) => updateFocus(e.target.value as SearchFocus)}
                                     className="bg-slate-800 text-white border border-slate-700 rounded px-2 py-1 outline-none cursor-pointer"
                                 >
                                     {Object.values(SearchFocus).map(f => <option key={f} value={f}>{f}</option>)}

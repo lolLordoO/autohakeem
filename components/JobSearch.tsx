@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, MapPin, ExternalLink, Loader2, Plus, Mail, Globe, Sparkles, Linkedin, CheckCircle2, AlertTriangle, Building2, DollarSign, Filter, Copy, Flame, Trophy, Target, ArrowRight, X } from 'lucide-react';
 import { searchJobsInUAE, analyzeProfileForSearch } from '../services/geminiService';
 import { JobOpportunity, PersonaType, SearchFocus, MatchGrade } from '../types';
+import { getUiState, saveUiState } from '../services/storageService';
 
 interface JobSearchProps {
   onSelectJob: (job: JobOpportunity) => void;
@@ -28,6 +29,17 @@ export default function JobSearch({
   const [searchFocus, setSearchFocus] = useState<SearchFocus>(SearchFocus.ALL);
   const [activeJob, setActiveJob] = useState<JobOpportunity | null>(null);
 
+  // Load Persisted Focus
+  useEffect(() => {
+      const saved = getUiState().jobSearchFocus;
+      if (saved) setSearchFocus(saved as SearchFocus);
+  }, []);
+
+  const handleFocusChange = (focus: SearchFocus) => {
+      setSearchFocus(focus);
+      saveUiState({ jobSearchFocus: focus });
+  }
+
   const handleSearch = async (searchQuery: string) => {
     setQuery(searchQuery);
     setIsLoading(true);
@@ -47,6 +59,7 @@ export default function JobSearch({
     try {
         const optimizedQuery = await analyzeProfileForSearch(query);
         setQuery(optimizedQuery);
+        // Safe delay to prevent instant 429 after profile analysis
         await new Promise(resolve => setTimeout(resolve, 1500)); 
         handleSearch(optimizedQuery);
     } catch(e) {
@@ -57,7 +70,8 @@ export default function JobSearch({
   }
 
   const getSmartSearchUrl = (job: JobOpportunity) => {
-      const q = encodeURIComponent(`"${job.title}" "${job.company}" UAE application`);
+      // Use "intitle" for better accuracy on job listings
+      const q = encodeURIComponent(`intitle:"${job.title}" "${job.company}" UAE`);
       return `https://www.google.com/search?q=${q}`;
   };
 
@@ -70,11 +84,16 @@ export default function JobSearch({
       }
   }
 
+  const getRelevanceBadge = (job: JobOpportunity) => {
+      if (job.matchGrade === 'S') return <span className="ml-2 flex h-2 w-2 rounded-full bg-brand-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>;
+      return null;
+  }
+
   return (
     <div className="h-screen flex flex-col bg-dark-bg overflow-hidden">
       {/* HEADER */}
       <div className="p-6 border-b border-dark-border bg-dark-bg shrink-0">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-4 max-w-7xl mx-auto w-full">
               <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                   <Search className="text-brand-500" size={24}/> 
                   Job Search Agent
@@ -84,7 +103,7 @@ export default function JobSearch({
               </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 max-w-7xl mx-auto w-full">
                {/* Search Bar */}
                <div className="flex gap-2">
                    <div className="relative flex-1">
@@ -103,7 +122,7 @@ export default function JobSearch({
                        disabled={isLoading || isAnalyzing}
                        className="bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 border border-purple-500/30 px-4 rounded-lg font-medium flex items-center gap-2 text-sm whitespace-nowrap"
                    >
-                       {isAnalyzing ? <Loader2 className="animate-spin" size={14}/> : <Sparkles size={14} />} Match
+                       {isAnalyzing ? <Loader2 className="animate-spin" size={14}/> : <Sparkles size={14} />} Match Profile
                    </button>
                    <button
                        onClick={() => handleSearch(query)}
@@ -120,7 +139,7 @@ export default function JobSearch({
                     {Object.values(SearchFocus).map(focus => (
                         <button
                             key={focus}
-                            onClick={() => setSearchFocus(focus)}
+                            onClick={() => handleFocusChange(focus)}
                             className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all whitespace-nowrap ${
                                 searchFocus === focus 
                                 ? 'bg-white text-black' 
@@ -157,18 +176,26 @@ export default function JobSearch({
                         <div 
                             key={job.id} 
                             onClick={() => setActiveJob(job)}
-                            className={`p-4 cursor-pointer hover:bg-slate-800/50 transition-colors ${activeJob?.id === job.id ? 'bg-brand-900/10 border-l-2 border-brand-500' : 'border-l-2 border-transparent'}`}
+                            className={`p-4 cursor-pointer hover:bg-slate-800/50 transition-colors group relative ${activeJob?.id === job.id ? 'bg-brand-900/10 border-l-2 border-brand-500' : 'border-l-2 border-transparent'}`}
                         >
                             <div className="flex justify-between items-start mb-1">
-                                <h3 className={`text-sm font-bold line-clamp-1 ${activeJob?.id === job.id ? 'text-brand-400' : 'text-slate-200'}`}>{job.title}</h3>
+                                <h3 className={`text-sm font-bold line-clamp-1 flex items-center ${activeJob?.id === job.id ? 'text-brand-400' : 'text-slate-200'}`}>
+                                    {job.title}
+                                    {getRelevanceBadge(job)}
+                                </h3>
                                 {getVerdictBadge(job.matchGrade)}
                             </div>
                             <div className="text-xs text-slate-400 mb-2 truncate">{job.company} • {job.location}</div>
-                            <div className="flex gap-2">
-                                <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">{job.source}</span>
-                                {job.salaryEstimate && !job.salaryEstimate.includes('Market') && (
-                                    <span className="text-[10px] bg-emerald-900/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-900/30 font-mono">{job.salaryEstimate}</span>
-                                )}
+                            <div className="flex justify-between items-center mt-3">
+                                <div className="flex gap-2">
+                                    <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">{job.source}</span>
+                                    {job.salaryEstimate && !job.salaryEstimate.includes('Market') && (
+                                        <span className="text-[10px] bg-emerald-900/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-900/30 font-mono">{job.salaryEstimate}</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(getSmartSearchUrl(job), '_blank'); }} className="p-1.5 bg-slate-700 rounded text-slate-300 hover:text-white" title="Google Search"><Search size={12}/></button>
+                                </div>
                             </div>
                         </div>
                     ))}

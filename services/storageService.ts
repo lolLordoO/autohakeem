@@ -15,6 +15,33 @@ const RECRUITER_QUERY_KEY = 'autohakeem_recruiter_query';
 const AGENCY_RESULTS_KEY = 'autohakeem_agency_results';
 const DRAFT_KEY = 'autohakeem_current_draft';
 const GOALS_KEY = 'autohakeem_daily_goals';
+const UI_STATE_KEY = 'autohakeem_ui_state';
+
+// --- UI STATE (New Global Persistence) ---
+
+export interface UiState {
+    activeTab?: string;
+    jobSearchFocus?: string;
+    recruiterFocus?: string;
+    recruiterView?: string;
+    recruiterReplyText?: string; // Persist intelligence input
+    agencyFocus?: string;
+    agencyView?: string;
+    agencyDraft?: string;
+    lastSelectedJobId?: string;
+}
+
+export const getUiState = (): UiState => {
+    try {
+        const s = localStorage.getItem(UI_STATE_KEY);
+        return s ? JSON.parse(s) : {};
+    } catch { return {}; }
+}
+
+export const saveUiState = (updates: Partial<UiState>) => {
+    const current = getUiState();
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({ ...current, ...updates }));
+}
 
 // --- Applications ---
 
