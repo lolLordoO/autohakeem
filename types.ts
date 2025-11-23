@@ -167,6 +167,26 @@ export interface DailyGoals {
     streak: number;
 }
 
+// Brand Engine Types
+export type LinkedInTone = 'Thought Leader' | 'Controversial' | 'Data-Driven' | 'Celebratory';
+
+export interface LinkedInPost {
+    id: string;
+    signalId: string;
+    topic: string;
+    content: string;
+    tone: LinkedInTone;
+    dateCreated: string;
+}
+
+// Mock Interview Types
+export interface ChatMessage {
+    role: 'ai' | 'user';
+    text: string;
+    critique?: string; // AI critique of the user's previous answer
+    timestamp: string;
+}
+
 // State Types
 export interface JobSearchState {
     results: JobOpportunity[];

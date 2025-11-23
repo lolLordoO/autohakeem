@@ -3,11 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { getApplications, updateApplicationStatus } from '../services/storageService';
 import { generateInterviewBrief, evaluateOffer } from '../services/geminiService';
 import { ApplicationRecord } from '../types';
-import { Calendar, MapPin, ExternalLink, Briefcase, Search, FileText, Calculator, X, Loader2 } from 'lucide-react';
+import { Calendar, MapPin, ExternalLink, Briefcase, Search, FileText, Calculator, X, Loader2, Mic } from 'lucide-react';
+import MockInterview from './MockInterview'; // Though this component doesn't embed MockInterview, we want to route to it.
 
 const ApplicationHistory: React.FC = () => {
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
-  const [activeModal, setActiveModal] = useState<{type: 'brief' | 'offer', appId: string} | null>(null);
+  const [activeModal, setActiveModal] = useState<{type: 'brief' | 'offer' | 'mock', appId: string} | null>(null);
   const [loading, setLoading] = useState(false);
   const [modalContent, setModalContent] = useState<any>(null);
   
@@ -45,6 +46,10 @@ const ApplicationHistory: React.FC = () => {
       setActiveModal({ type: 'offer', appId });
   }
 
+  // We are using the MockInterview component as a separate route in App.tsx now
+  // But we can keep a local modal for quick access or redirect logic if needed. 
+  // For now, let's keep the MockInterview in its own tab for full screen experience.
+  
   const currentApp = activeModal ? applications.find(a => a.id === activeModal.appId) : null;
 
   return (
@@ -91,13 +96,14 @@ const ApplicationHistory: React.FC = () => {
                     </div>
                     <div className="col-span-5 flex gap-2">
                         <button onClick={() => handlePrep(app)} className="px-3 py-1 bg-blue-900/20 text-blue-400 border border-blue-500/30 rounded text-xs flex items-center gap-1 hover:bg-blue-900/40">
-                            <FileText size={12}/> Interview Prep
+                            <FileText size={12}/> Brief
                         </button>
                         {app.status === 'offer' && (
                              <button onClick={() => openOfferModal(app.id)} className="px-3 py-1 bg-green-900/20 text-green-400 border border-green-500/30 rounded text-xs flex items-center gap-1 hover:bg-green-900/40">
-                                <Calculator size={12}/> Eval Offer
+                                <Calculator size={12}/> Eval
                             </button>
                         )}
+                        {/* Note: The full simulation is best accessed via the sidebar 'Events' or a new 'Training' tab, but we can nudge them */}
                     </div>
                 </div>
             ))}

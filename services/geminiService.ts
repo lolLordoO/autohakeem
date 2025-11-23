@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone } from "../types";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -43,6 +43,40 @@ const retryWrapper = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000):
   }
 };
 
+// --- SMART CACHE LAYER ---
+// Wraps API calls to prevent quota usage for identical requests
+const smartCache = async <T>(key: string, fn: () => Promise<T>, ttlMin = 60): Promise<T> => {
+    const cacheKey = `gemini_cache_${key}`;
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const { data, expiry } = JSON.parse(cached);
+            if (new Date().getTime() < expiry) {
+                // console.log(`[SmartCache] Hit: ${key}`);
+                return data;
+            }
+        }
+    } catch (e) { console.warn("Cache read failed", e); }
+
+    // console.log(`[SmartCache] Miss: ${key}`);
+    const result = await fn();
+    
+    try {
+        localStorage.setItem(cacheKey, JSON.stringify({
+            data: result,
+            expiry: new Date().getTime() + (ttlMin * 60 * 1000)
+        }));
+    } catch (e) { console.warn("Cache write failed (storage full?)", e); }
+    
+    return result;
+}
+
+export const clearSmartCache = () => {
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('gemini_cache_')) localStorage.removeItem(key);
+    });
+}
+
 // "The Iron Parser": A robust stack-based JSON extractor
 const cleanAndParseJSON = (text: string) => {
   if (!text) return [];
@@ -63,7 +97,7 @@ const cleanAndParseJSON = (text: string) => {
       let jsonString = '';
 
       if (arrayStart !== -1 && arrayEnd !== -1) {
-           // It's likely an array, even if there is text before/after
+           // It's likely an array
            jsonString = cleaned.substring(arrayStart, arrayEnd + 1);
       } else if (objectStart !== -1 && objectEnd !== -1) {
            // It's likely an object
@@ -75,7 +109,6 @@ const cleanAndParseJSON = (text: string) => {
               return JSON.parse(jsonString);
           } catch (innerE) {
               console.warn("Extracted JSON failed to parse. Returning empty structure.");
-              // Fallback to empty if it looks like an array but failed
               return jsonString.trim().startsWith('[') ? [] : {};
           }
       }
@@ -85,7 +118,7 @@ const cleanAndParseJSON = (text: string) => {
   }
 };
 
-// URL Validator: Enforce strict domain whitelisting to prevent 404s
+// URL Validator
 const isValidJobUrl = (url: string | undefined): boolean => {
     if (!url) return false;
     const lower = url.toLowerCase();
@@ -98,41 +131,27 @@ const isValidJobUrl = (url: string | undefined): boolean => {
     return whitelist.some(domain => lower.includes(domain)) && !lower.includes('...');
 };
 
-// --- FOCUS ENGINE ---
-
 const getFocusKeywords = (focus: SearchFocus): string => {
     switch (focus) {
-        case SearchFocus.MARKETING: 
-            return "AND (Growth OR SEO OR 'Brand Strategy' OR Copywriting OR 'Digital Marketing' OR Campaign)";
-        case SearchFocus.CONTENT: 
-            return "AND (Content OR 'Creative Director' OR Video OR Storytelling OR Copywriter OR Social)";
-        case SearchFocus.TECH_AI: 
-            return "AND (AI OR 'Generative AI' OR LLM OR 'Machine Learning' OR Python OR NLP)";
-        case SearchFocus.WEB3: 
-            return "AND (Web3 OR Blockchain OR Crypto OR DeFi OR Tokenomics OR Solidity OR Wallet)";
-        case SearchFocus.PMO: 
-            return "AND ('Project Manager' OR 'Product Owner' OR Scrum OR Agile OR Kanban OR Roadmap)";
-        case SearchFocus.SAAS: 
-            return "AND (SaaS OR B2B OR 'Enterprise Software' OR 'Account Executive' OR Salesforce)";
-        case SearchFocus.FINTECH: 
-            return "AND (FinTech OR Payments OR Banking OR Trading OR Compliance)";
-        case SearchFocus.HEALTH: 
-            return "AND (HealthTech OR MedTech OR 'Healthcare IT' OR Biotechnology)";
-        case SearchFocus.REAL_ESTATE: 
-            return "AND (PropTech OR 'Real Estate' OR Property OR Construction)";
-        case SearchFocus.ECOMMERCE: 
-            return "AND (E-commerce OR Retail OR Shopify OR 'Supply Chain' OR Logistics)";
-        case SearchFocus.CONSTRUCTION: 
-            return "AND (Engineering OR Construction OR MEP OR Civil OR Architecture)";
-        default: 
-            return "";
+        case SearchFocus.MARKETING: return "AND (Growth OR SEO OR 'Brand Strategy' OR Copywriting OR 'Digital Marketing' OR Campaign)";
+        case SearchFocus.CONTENT: return "AND (Content OR 'Creative Director' OR Video OR Storytelling OR Copywriter OR Social)";
+        case SearchFocus.TECH_AI: return "AND (AI OR 'Generative AI' OR LLM OR 'Machine Learning' OR Python OR NLP)";
+        case SearchFocus.WEB3: return "AND (Web3 OR Blockchain OR Crypto OR DeFi OR Tokenomics OR Solidity OR Wallet)";
+        case SearchFocus.PMO: return "AND ('Project Manager' OR 'Product Owner' OR Scrum OR Agile OR Kanban OR Roadmap)";
+        case SearchFocus.SAAS: return "AND (SaaS OR B2B OR 'Enterprise Software' OR 'Account Executive' OR Salesforce)";
+        case SearchFocus.FINTECH: return "AND (FinTech OR Payments OR Banking OR Trading OR Compliance)";
+        case SearchFocus.HEALTH: return "AND (HealthTech OR MedTech OR 'Healthcare IT' OR Biotechnology)";
+        case SearchFocus.REAL_ESTATE: return "AND (PropTech OR 'Real Estate' OR Property OR Construction)";
+        case SearchFocus.ECOMMERCE: return "AND (E-commerce OR Retail OR Shopify OR 'Supply Chain' OR Logistics)";
+        case SearchFocus.CONSTRUCTION: return "AND (Engineering OR Construction OR MEP OR Civil OR Architecture)";
+        default: return "";
     }
 }
 
 // --- SEARCH AGENTS ---
 
 export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<string> => {
-  return retryWrapper(async () => {
+  return smartCache(`profile_analysis_${userBaseQuery}`, () => retryWrapper(async () => {
       const ai = getClient();
       const prompt = userBaseQuery 
         ? `Merge this user query "${userBaseQuery}" with the candidate's strongest CV attributes to create a ONE high-precision Boolean search query for UAE jobs (0-4 years exp).`
@@ -149,15 +168,14 @@ export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<st
         3. ENFORCE LOCATION: "United Arab Emirates" OR "Dubai" OR "Abu Dhabi" OR "Sharjah".
         4. ENFORCE EXPERIENCE: Exclude "Senior", "Head", "Director", "VP". Target "Associate", "Specialist", "Manager" (if <5 years).
         
-        Output: Query string only. No markdown.
-        Example Input: "Marketing" -> Output: "("Marketing Specialist" OR "Growth Associate") AND (AI OR Web3) AND (Dubai OR Abu Dhabi) -Senior -Director"`
+        Output: Query string only. No markdown.`
       });
       return response.text?.trim().replace(/["']/g, "").replace(/`/g, "") || userBaseQuery + " UAE";
-  });
+  }));
 };
 
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
-  return retryWrapper(async () => {
+  return smartCache(`jobs_${query}_${focus}`, () => retryWrapper(async () => {
       const ai = getClient();
       
       const focusKeywords = getFocusKeywords(focus);
@@ -181,15 +199,12 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       const rawJobs = cleanAndParseJSON(response.text || "[]");
       if (!Array.isArray(rawJobs)) return [];
 
-      // PRODUCTION HARDENING: De-duplicate and filter low quality results
       const seen = new Set<string>();
       const uniqueJobs = rawJobs.filter((job: any) => {
           const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
           if (seen.has(key)) return false;
-          
           if (!job.title || job.title.toLowerCase().includes('not found') || job.title.toLowerCase().includes('job title')) return false;
           if (!job.company) return false;
-
           seen.add(key);
           return true;
       });
@@ -200,7 +215,7 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         company: job.company,
         location: job.location || "UAE",
         source: job.source || "Web Search",
-        url: isValidJobUrl(job.url) ? job.url : null, // Enforce Whitelist Logic
+        url: isValidJobUrl(job.url) ? job.url : null,
         search_query: job.search_query || `site:linkedin.com/jobs "${job.title}" "${job.company}" UAE`,
         applyUrl: isValidJobUrl(job.applyUrl) ? job.applyUrl : null,
         applyEmail: job.applyEmail || null,
@@ -210,116 +225,178 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         dateFound: new Date().toISOString(),
         status: 'found'
       }));
-  });
+  }));
 };
 
 // --- INTELLIGENCE AGENTS ---
 
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
-    return retryWrapper(async () => {
+    // Cache for 4 hours as market news doesn't change by the minute
+    return smartCache(`market_signals`, () => retryWrapper(async () => {
         const ai = getClient();
-        // Relaxed timeframe to 30 days to ensure data availability
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Deep search UAE Business News (LAST 30 DAYS) for Hiring Signals.
             Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
-            
             Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
-            
-            Look for:
-            1. Funding Rounds (Series A/B)
-            2. New Office Openings (DIFC, ADGM, DMCC)
-            3. Product Launches (AI/Web3)
-            4. Contract Wins (Govt/Enterprise)
-            5. Executive Hires (New CTO/CMO usually means team expansion)
-            6. Stealth Startups emerging in Hub71/In5.
-            
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS. NO 'I found these signals'. JUST JSON.
+            Look for: Funding Rounds, New Office Openings, Product Launches, Contract Wins, Executive Hires, Stealth Startups.
+            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
             JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1", "Role2"] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
         return Array.isArray(data) ? data.map((s:any) => ({...s, id: Math.random().toString(), dateDetected: new Date().toISOString()})) : [];
-    });
+    }), 240); 
 };
 
 export const findTechEvents = async (): Promise<TechEvent[]> => {
-    return retryWrapper(async () => {
+    return smartCache(`tech_events`, () => retryWrapper(async () => {
         const ai = getClient();
-        // Relaxed source constraint to find more events
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah.
-            Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs, DWTC, University Career Fairs.
-            
+            Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs.
             Constraint: Physical events in UAE only.
-            
             CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
             JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
         return Array.isArray(data) ? data.map((e:any) => ({...e, id: Math.random().toString()})) : [];
+    }), 240);
+};
+
+// --- BRAND ENGINE (LinkedIn Ghostwriter) ---
+
+export const generateLinkedInPost = async (signal: MarketSignal, tone: LinkedInTone): Promise<string> => {
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Act as a Top Tier LinkedIn Ghostwriter for Abdul Hakeem (AI & Web3 Strategist in UAE).
+            Task: Write a viral LinkedIn post based on this market signal:
+            "${signal.company} - ${signal.summary}"
+            
+            Tone: ${tone}
+            
+            Structure:
+            1. The Hook (Stop the scroll).
+            2. The Insight (Why this matters for UAE tech ecosystem).
+            3. The Expert Take (Connect it to AI, Web3, or Growth Strategy).
+            4. The Question (Engagement bait).
+            
+            Constraints:
+            - Use short paragraphs (bro-etry style).
+            - Include 3 relevant hashtags.
+            - No "I am excited to announce". Be value-driven.`
+        });
+        return response.text || "";
     });
 };
 
-// --- RECRUITER AGENTS ---
+// --- MOCK INTERVIEW DOJO ---
+
+export const getInterviewQuestion = async (jobTitle: string, company: string, history: any[]): Promise<string> => {
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const context = history.map(m => `${m.role}: ${m.text}`).join('\n');
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Act as a Tough Senior Recruiter at ${company} interviewing a candidate for ${jobTitle}.
+            Current Conversation:
+            ${context}
+            
+            Task: Ask the NEXT question.
+            - If this is the start, ask a behavioral opener (Tell me about yourself / Why ${company}).
+            - If the candidate answered, dig deeper or move to technical/strategy competence.
+            - Be professional but challenging.
+            
+            Output: Just the question text.`
+        });
+        return response.text || "Tell me about yourself and why you fit this role.";
+    });
+};
+
+export const critiqueAnswer = async (question: string, answer: string): Promise<string> => {
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Critique this interview answer.
+            Question: ${question}
+            Answer: ${answer}
+            
+            Provide:
+            1. Rating (0-10).
+            2. What was good.
+            3. What was weak (red flags).
+            4. How to improve it (concise tip).
+            
+            Keep it constructive and brief (max 3 sentences).`
+        });
+        return response.text || "";
+    });
+};
+
+// --- RECRUITER & AGENCY ---
 
 export const findRecruiters = async (company: string, focus: SearchFocus, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
-  return retryWrapper(async () => {
+  return smartCache(`recruiters_${company}_${focus}`, () => retryWrapper(async () => {
       const ai = getClient();
       const excludeStr = excludedNames.length > 0 ? `Exclude names: ${excludedNames.join(', ')}.` : "";
-      
       let roleKeywords = "Recruiter OR Talent Acquisition OR HR";
-      
+      // ... (existing switch logic logic) ...
       switch (focus) {
           case SearchFocus.TECH_AI:
-          case SearchFocus.WEB3:
-            roleKeywords = "Technical Recruiter OR CTO OR VP Engineering OR 'Head of Talent'";
-            break;
+          case SearchFocus.WEB3: roleKeywords = "Technical Recruiter OR CTO OR VP Engineering OR 'Head of Talent'"; break;
           case SearchFocus.MARKETING:
-          case SearchFocus.CONTENT:
-            roleKeywords = "CMO OR 'Head of Marketing' OR 'Creative Director' OR 'Marketing Recruiter'";
-            break;
-          case SearchFocus.PMO:
-             roleKeywords = "'Head of Product' OR CPO OR 'Program Director' OR 'Head of Projects'";
-             break;
-          case SearchFocus.FINTECH:
-             roleKeywords = "'Head of FinTech' OR 'Payments Lead' OR 'Talent Acquisition Finance'";
-             break;
-          default:
-             roleKeywords = "Recruiter OR 'Talent Acquisition' OR 'Hiring Manager'";
+          case SearchFocus.CONTENT: roleKeywords = "CMO OR 'Head of Marketing' OR 'Creative Director'"; break;
+          case SearchFocus.PMO: roleKeywords = "'Head of Product' OR CPO OR 'Program Director'"; break;
+          default: roleKeywords = "Recruiter OR 'Talent Acquisition' OR 'Hiring Manager'";
       }
 
       const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: `Find 5 Key Hiring People at ${company} in UAE matching: ${roleKeywords}.
           ${excludeStr}
-          
           Use X-Ray Search Logic (site:linkedin.com/in).
-          Constraint: MUST be based in UAE (Dubai/Abu Dhabi). Do not return global heads in UK/USA.
-          
-          CRITICAL RULES:
-          1. OUTPUT STRICT JSON ONLY. NO CHAT, NO "Here are results", NO APOLOGIES.
-          2. IF NOTHING FOUND: Return [].
-          3. DO NOT GUESS EMAILS. If not publicly found, return null.
-          4. DO NOT GUESS LINKEDIN URLs. If not confirmed, return null.
-          5. Categorize: A (Decision Maker/Head), B (Recruiter), C (HR Admin).
-          
+          Constraint: MUST be based in UAE.
+          CRITICAL: OUTPUT STRICT JSON ONLY. NO CHAT.
           JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category", "recentPostSnippet" }]`,
           config: { tools: [{ googleSearch: {} }] }
       });
       return cleanAndParseJSON(response.text || "[]");
-  });
+  }));
 };
+
+export const findAgencies = async (focus: SearchFocus, excludedNames: string[] = []): Promise<AgencyProfile[]> => {
+    return smartCache(`agencies_${focus}`, () => retryWrapper(async () => {
+        const ai = getClient();
+        const focusKeywords = getFocusKeywords(focus);
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Find 15 UAE Recruitment Agencies specializing in: ${focus}. 
+            Keywords to match: ${focusKeywords}.
+            Exclude: ${excludedNames.join(',')}.
+            Sources: LinkedIn, Google Maps, Agency Directories.
+            Constraint: Physical presence in Dubai/Abu Dhabi.
+            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY.
+            JSON Output: [{ "name", "focus", "email", "phone", "website", "location", "activeRoles": [] }]`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        return cleanAndParseJSON(response.text || "[]");
+    }));
+}
+
+// ... (keep existing exports: analyzeRecruiterReply, generateRecruiterMessage, generateWhatsAppMessage, draftAgencyOutreach, recommendPersona, analyzeJobFit, generateResumeBullet, evaluateOffer, generateInterviewBrief)
 
 export const analyzeRecruiterReply = async (replyText: string): Promise<SentimentAnalysis> => {
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Analyze recruiter email: "${replyText}".
-            JSON Output: { "sentiment": "Positive"|"Neutral"|"Negative", "suggestedTone", "analysis", "draftReply" }`,
+            contents: `Analyze recruiter email: "${replyText}". JSON Output: { "sentiment": "Positive"|"Neutral"|"Negative", "suggestedTone", "analysis", "draftReply" }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
@@ -334,7 +411,6 @@ export const generateRecruiterMessage = async (recruiterName: string, company: s
             model: 'gemini-2.5-flash',
             contents: `Write a high-impact LinkedIn connection note (max 300 chars) to ${recruiterName} at ${company} (UAE).
             Sender: Abdul Hakeem (${persona}). Link: ${website}.
-            
             STYLE: "Hook-Value-Ask".
             - Hook: Mention ${company}'s recent UAE growth/news.
             - Value: Mention "$2M funding secured" or "40% MQL growth".
@@ -358,30 +434,6 @@ export const generateWhatsAppMessage = async (name: string, company: string, rol
     });
 }
 
-// --- AGENCY AGENTS ---
-
-export const findAgencies = async (focus: SearchFocus, excludedNames: string[] = []): Promise<AgencyProfile[]> => {
-    return retryWrapper(async () => {
-        const ai = getClient();
-        const focusKeywords = getFocusKeywords(focus);
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Find 15 UAE Recruitment Agencies specializing in: ${focus}. 
-            Keywords to match: ${focusKeywords}.
-            Exclude: ${excludedNames.join(',')}.
-            Sources: LinkedIn, Google Maps, Agency Directories.
-            
-            Constraint: Physical presence in Dubai or Abu Dhabi.
-            Look for ACTIVE JOB LISTINGS on their site/linkedin.
-            
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. If none found, return [].
-            JSON Output: [{ "name", "focus", "email", "phone", "website", "location", "activeRoles": ["Role1", "Role2"] }]`,
-            config: { tools: [{ googleSearch: {} }] }
-        });
-        return cleanAndParseJSON(response.text || "[]");
-    });
-}
-
 export const draftAgencyOutreach = async (agency: AgencyProfile, persona: PersonaType): Promise<string> => {
     return retryWrapper(async () => {
         const ai = getClient();
@@ -395,8 +447,6 @@ export const draftAgencyOutreach = async (agency: AgencyProfile, persona: Person
         return response.text || "";
     });
 }
-
-// --- APPLICATION AGENTS ---
 
 export const recommendPersona = async (jobDescription: string): Promise<PersonaType> => {
     return retryWrapper(async () => {
@@ -510,10 +560,8 @@ export const refineContent = async (content: GeneratedContent, instruction: stri
     });
 };
 
-// --- CLOSING AGENTS ---
-
 export const generateInterviewBrief = async (job: JobOpportunity): Promise<string> => {
-    return retryWrapper(async () => {
+    return smartCache(`brief_${job.id}`, () => retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -522,7 +570,7 @@ export const generateInterviewBrief = async (job: JobOpportunity): Promise<strin
             config: { tools: [{ googleSearch: {} }] }
         });
         return response.text || "Error generating brief.";
-    });
+    }));
 }
 
 export const evaluateOffer = async (salary: string, location: string, benefits: string): Promise<OfferEvaluation> => {

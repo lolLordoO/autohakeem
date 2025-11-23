@@ -10,6 +10,8 @@ import ApplicationHistory from './components/ApplicationHistory';
 import MarketSignals from './components/MarketSignals';
 import Events from './components/Events';
 import Settings from './components/Settings';
+import BrandEngine from './components/BrandEngine';
+import MockInterview from './components/MockInterview';
 import { JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from './types';
 import { USER_PROFILE } from './constants';
 import { Mail, MapPin, Globe, Copy, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
@@ -135,6 +137,7 @@ const App: React.FC = () => {
             setResults={setAgencyResults}
           />
         );
+      case 'brand': return <BrandEngine />; // New Route
       case 'settings': return <Settings />;
       default: return <Dashboard />;
     }
@@ -207,6 +210,18 @@ const App: React.FC = () => {
             </div>
         )}
       </main>
+      
+      {/* Mock Interview Launch Button (Overlay for quick access if needed) */}
+      {activeTab === 'tracker' && (
+           <button 
+                onClick={() => setActiveTab('mock-interview')} 
+                className="fixed bottom-8 right-8 bg-red-600 hover:bg-red-500 text-white rounded-full p-4 shadow-2xl z-50 transition-transform hover:scale-105 hidden"
+            >
+               <div className="flex items-center gap-2">
+                   <div className="font-bold">Practice Mode</div>
+               </div>
+           </button>
+      )}
     </div>
   );
 };

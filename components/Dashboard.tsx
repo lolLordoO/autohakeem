@@ -1,8 +1,9 @@
 
 import React, { useEffect, useState } from 'react';
-import { Activity, Target, FileText, Send, TrendingUp, Clock, CheckSquare, Settings, RotateCcw, CalendarDays, ExternalLink, Trophy, Flame } from 'lucide-react';
+import { Activity, Target, FileText, Send, TrendingUp, Clock, CheckSquare, Settings, RotateCcw, CalendarDays, ExternalLink, Trophy, Flame, Database } from 'lucide-react';
 import { USER_PROFILE } from '../constants';
 import { getStats, getVisaDetails, saveVisaDetails, getDailyGoals } from '../services/storageService';
+import { clearSmartCache } from '../services/geminiService';
 import { VisaDetails, DailyGoals } from '../types';
 
 const Dashboard: React.FC = () => {
@@ -50,6 +51,11 @@ const Dashboard: React.FC = () => {
   const daysLeft = daysRemaining();
   const visaColor = daysLeft > 30 ? 'text-emerald-400' : daysLeft > 15 ? 'text-orange-400' : 'text-red-500';
   const progressColor = daysLeft > 30 ? 'bg-emerald-500' : daysLeft > 15 ? 'bg-orange-500' : 'bg-red-500';
+
+  const handleClearCache = () => {
+      clearSmartCache();
+      alert('Search cache cleared. New searches will now hit the API.');
+  }
 
   return (
     <div className="p-8 space-y-8 overflow-y-auto h-screen pb-20">
@@ -103,6 +109,12 @@ const Dashboard: React.FC = () => {
                         className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded transition-colors"
                       >
                           <RotateCcw size={12}/> Reset to Today
+                      </button>
+                      <button 
+                        onClick={handleClearCache}
+                        className="w-full flex items-center justify-center gap-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 text-xs py-2 rounded transition-colors"
+                      >
+                          <Database size={12}/> Clear Search Cache
                       </button>
                   </div>
               ) : (
