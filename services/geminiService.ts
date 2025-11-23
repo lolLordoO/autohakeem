@@ -148,6 +148,17 @@ const getFocusKeywords = (focus: SearchFocus): string => {
     }
 }
 
+// --- GLOBAL NATURAL WRITING RULES ---
+const NATURAL_RULES = `
+STRICT WRITING RULES (NATURAL & HUMAN):
+1. LANGUAGE: Use simple words. Write like you talk to a friend. Short sentences.
+2. NO AI PHRASES: NEVER use "dive into", "unleash", "game-changing", "revolutionary", "transformative", "leverage", "optimize", "unlock potential", "tapestry", "underscores", "fostering", "realm".
+3. STYLE: Be direct. Cut fluff. Use examples instead of abstract concepts.
+4. TONE: Be honest. Don't force friendliness. Write like texting but professional.
+5. NO DASHES: Do not use hyphens or dashes "-" in the text.
+6. IMPACT: Write like an experienced talker. Write what sells and attracts.
+`;
+
 // --- SEARCH AGENTS ---
 
 export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<string> => {
@@ -190,7 +201,7 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         1. LOCATION: MUST be in UAE (Dubai, Abu Dhabi, Sharjah, etc). Exclude "Remote" if implies outside UAE.
         2. EXPERIENCE LEVEL: 0-4 Years. Exclude "Senior Manager" (5+ yrs), "Director", "VP", "Head of". Target "Associate", "Junior", "Specialist", "Officer", or "Manager" (only if <5 years requirement).
         3. ZERO HALLUCINATIONS: If you cannot find a specific deep link, return null for 'url'. Do NOT invent URLs.
-        4. SALARY PROJECTION: If salary is hidden, ESTIMATE it based on the Role + Company Tier + UAE Market Data (e.g. "Est. AED 12k-18k").
+        4. SALARY PROJECTION: If salary is hidden, ESTIMATE it based on the Role + Company Tier + UAE Market Data (e.g. "Est. AED 12k 18k").
         5. VERDICT: Assign a MatchGrade 'S' (Perfect), 'A' (Great), 'B' (Good), 'C' (Average) based on fit for an AI/Web3/Marketing professional.
         
         JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate", "matchGrade": "S"|"A"|"B"|"C" }]`,
@@ -268,27 +279,35 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
 
 // --- BRAND ENGINE (LinkedIn Ghostwriter) ---
 
-export const generateLinkedInPost = async (signal: MarketSignal, tone: LinkedInTone): Promise<string> => {
+export const generateLinkedInPost = async (signal: MarketSignal, tone: LinkedInTone, creativity: 'Conservative'|'Balanced'|'Wild' = 'Balanced', length: 'Short'|'Medium'|'Long' = 'Medium'): Promise<string> => {
     return retryWrapper(async () => {
         const ai = getClient();
+        
+        let temp = 0.7;
+        if (creativity === 'Conservative') temp = 0.3;
+        if (creativity === 'Wild') temp = 1.0;
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Act as a Top Tier LinkedIn Ghostwriter for Abdul Hakeem (AI & Web3 Strategist in UAE).
+            contents: `Act as a Top Tier LinkedIn Creator for Abdul Hakeem (AI & Web3 Strategist in UAE).
             Task: Write a viral LinkedIn post based on this market signal:
-            "${signal.company} - ${signal.summary}"
+            "${signal.company} ${signal.summary}"
             
+            SETTINGS:
             Tone: ${tone}
+            Length: ${length}
             
-            Structure:
-            1. The Hook (Stop the scroll).
-            2. The Insight (Why this matters for UAE tech ecosystem).
-            3. The Expert Take (Connect it to AI, Web3, or Growth Strategy).
+            ${NATURAL_RULES}
+            
+            STRUCTURE:
+            1. The Hook (Stop the scroll. Be provocative or exciting).
+            2. The Insight (Why this matters for UAE tech).
+            3. The Takeaway (What should we do?).
             4. The Question (Engagement bait).
             
-            Constraints:
-            - Use short paragraphs (bro-etry style).
-            - Include 3 relevant hashtags.
-            - No "I am excited to announce". Be value-driven.`
+            Use emojis sparingly (max 3). Include 3 relevant hashtags.
+            `,
+            config: { temperature: temp }
         });
         return response.text || "";
     });
@@ -308,11 +327,10 @@ export const getInterviewQuestion = async (jobTitle: string, company: string, hi
             ${context}
             
             Task: Ask the NEXT question.
-            - If this is the start, ask a behavioral opener (Tell me about yourself / Why ${company}).
-            - If the candidate answered, dig deeper or move to technical/strategy competence.
-            - Be professional but challenging.
             
-            Output: Just the question text.`
+            ${NATURAL_RULES}
+            
+            Output: Just the question text. Be direct and challenging.`
         });
         return response.text || "Tell me about yourself and why you fit this role.";
     });
@@ -327,13 +345,15 @@ export const critiqueAnswer = async (question: string, answer: string): Promise<
             Question: ${question}
             Answer: ${answer}
             
+            ${NATURAL_RULES}
+            
             Provide:
             1. Rating (0-10).
             2. What was good.
             3. What was weak (red flags).
             4. How to improve it (concise tip).
             
-            Keep it constructive and brief (max 3 sentences).`
+            Keep it constructive, brief and direct (max 3 sentences).`
         });
         return response.text || "";
     });
@@ -346,7 +366,6 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
       const ai = getClient();
       const excludeStr = excludedNames.length > 0 ? `Exclude names: ${excludedNames.join(', ')}.` : "";
       let roleKeywords = "Recruiter OR Talent Acquisition OR HR";
-      // ... (existing switch logic logic) ...
       switch (focus) {
           case SearchFocus.TECH_AI:
           case SearchFocus.WEB3: roleKeywords = "Technical Recruiter OR CTO OR VP Engineering OR 'Head of Talent'"; break;
@@ -389,14 +408,16 @@ export const findAgencies = async (focus: SearchFocus, excludedNames: string[] =
     }));
 }
 
-// ... (keep existing exports: analyzeRecruiterReply, generateRecruiterMessage, generateWhatsAppMessage, draftAgencyOutreach, recommendPersona, analyzeJobFit, generateResumeBullet, evaluateOffer, generateInterviewBrief)
-
 export const analyzeRecruiterReply = async (replyText: string): Promise<SentimentAnalysis> => {
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Analyze recruiter email: "${replyText}". JSON Output: { "sentiment": "Positive"|"Neutral"|"Negative", "suggestedTone", "analysis", "draftReply" }`,
+            contents: `Analyze recruiter email: "${replyText}".
+            
+            ${NATURAL_RULES}
+            
+            JSON Output: { "sentiment": "Positive"|"Neutral"|"Negative", "suggestedTone", "analysis", "draftReply" }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
@@ -411,10 +432,15 @@ export const generateRecruiterMessage = async (recruiterName: string, company: s
             model: 'gemini-2.5-flash',
             contents: `Write a high-impact LinkedIn connection note (max 300 chars) to ${recruiterName} at ${company} (UAE).
             Sender: Abdul Hakeem (${persona}). Link: ${website}.
-            STYLE: "Hook-Value-Ask".
-            - Hook: Mention ${company}'s recent UAE growth/news.
-            - Value: Mention "$2M funding secured" or "40% MQL growth".
-            - Ask: "Open to connecting?"`
+            
+            ${NATURAL_RULES}
+            
+            SPECIFIC INSTRUCTIONS:
+            - Write like texting but professional.
+            - Casual. Direct. No fluff.
+            - Structure: Hook (News) -> Value (Metric) -> Ask (Connect?).
+            - DO NOT say "I hope this finds you well".
+            - Write what sells.`
         });
         return response.text || "";
     });
@@ -425,9 +451,12 @@ export const generateWhatsAppMessage = async (name: string, company: string, rol
         const ai = getClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Write a short, casual but professional WhatsApp message to ${name} (${role} at ${company}).
-            Context: I applied for a role / want to connect regarding opportunities.
-            Tone: Polite, brief, no fluff. Max 2 sentences.
+            contents: `Write a short, casual WhatsApp message to ${name} (${role} at ${company}).
+            
+            ${NATURAL_RULES}
+            
+            Context: I applied for a role / want to connect.
+            Tone: Very casual, polite, brief. Max 2 sentences.
             Output: Plain text message.`
         });
         return response.text || "";
@@ -441,8 +470,12 @@ export const draftAgencyOutreach = async (agency: AgencyProfile, persona: Person
             model: 'gemini-2.5-flash',
             contents: `Write a cold email to ${agency.name} (UAE Agency). Focus: ${agency.focus}.
             Persona: ${persona}.
+            
+            ${NATURAL_RULES}
+            
             Style: Professional, Confident, Direct.
-            Goal: Get on their candidate roster for UAE roles.`
+            Goal: Get on their candidate roster for UAE roles.
+            Focus: Be honest. Admit limitations if any, but sell the strengths. Get to the point quickly.`
         });
         return response.text || "";
     });
@@ -493,7 +526,10 @@ export const generateResumeBullet = async (missingKeyword: string, jobTitle: str
             contents: `Generate ONE high-impact resume bullet point for Abdul Hakeem's CV to address the missing skill: "${missingKeyword}".
             Target Role: ${jobTitle}.
             Context: Use his existing experience (${ABDUL_CV_TEXT.substring(0, 500)}) but frame it to highlight ${missingKeyword}.
-            Rule: Start with a strong verb. Use metrics if possible. Max 20 words.`
+            
+            ${NATURAL_RULES}
+            
+            Rule: Start with a strong verb. Use metrics. Max 20 words. Write what sells.`
         });
         return response.text?.trim() || "";
     });
@@ -504,21 +540,25 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
       const ai = getClient();
       
       const prompt = `
-      ACT AS: A Top-Tier Career Consultant & Copywriter.
-      TASK: Write a highly persuasive, tailored Application Strategy for Abdul Hakeem for this JD.
+      ACT AS: An experienced, confident professional talking to a hiring manager. NOT A ROBOT.
+      TASK: Write a persuasive Application Strategy for Abdul Hakeem for this JD.
       
+      ${NATURAL_RULES}
+
       STEP 1: ANALYZE STRATEGY
       - Identify the top 2-3 "Pain Points" in the JD (what problem are they hiring to solve?).
       - Map Abdul's CV Metrics ($2M funding, 40% MQLs, 150% Traffic, etc.) as EVIDENCE that he solves these pains.
-      - Formulate a "Strategic Angle" (e.g., "The Growth-Focused Project Manager").
+      - Formulate a "Strategic Angle".
       
       STEP 2: WRITE CONTENT
       - EMAIL DRAFT: Short (under 150 words). NO FLUFF.
         - Structure: Hook (Company News/Trend) -> Bridge (My Metric) -> Value (I solve X) -> Ask (Chat?).
-        - TONE: "Peer-to-Peer", confident, humane. NOT "I am writing to apply".
+        - TONE: "Peer-to-Peer", confident, humane. 
+        - BANNED: Do NOT start with "I am writing to apply". Start with the Hook.
+      
       - COVER LETTER: Deeper dive (300 words).
         - Use "Hook-Value-Proof-CTA" framework.
-        - Must mention specific company name and role.
+        - Be direct. Say what you mean. Write what sells.
       
       INPUTS:
       - PERSONA: ${persona}
@@ -552,6 +592,9 @@ export const refineContent = async (content: GeneratedContent, instruction: stri
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Refine this content. Instruction: ${instruction}. 
+            
+            ${NATURAL_RULES}
+            
             Maintain the existing JSON structure and only update the text fields (emailDraft, coverLetter).
             JSON Input: ${JSON.stringify(content)}`,
             config: { responseMimeType: "application/json" }
@@ -566,6 +609,9 @@ export const generateInterviewBrief = async (job: JobOpportunity): Promise<strin
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Create 1-page Interview Brief for ${job.title} at ${job.company} (UAE).
+            
+            ${NATURAL_RULES}
+            
             Sections: Company Mission, Key Talking Points (Map CV to JD), 3 Smart Questions for Interviewer.`,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -580,6 +626,9 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
             model: 'gemini-2.5-flash',
             contents: `Evaluate UAE Job Offer. Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
             Compare against UAE cost of living for that specific emirate.
+            
+            ${NATURAL_RULES}
+            
             JSON Output: { "salary": number, "currency": "AED", "benefitsScore": number, "commuteMinutes": number, "growthPotential": number, "totalScore": number, "recommendation": "string" }`,
             config: { responseMimeType: "application/json" }
         });

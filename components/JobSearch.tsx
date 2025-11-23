@@ -280,8 +280,16 @@ export default function JobSearch({
                   </div>
               </div>
           ) : (
-              <div className="flex-1 hidden lg:flex flex-col items-center justify-center bg-dark-card">
-                 {/* Empty State */}
+              <div className="flex-1 hidden lg:flex flex-col items-center justify-center bg-dark-card border-l border-dark-border">
+                 <div className="text-center space-y-4">
+                    <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto border border-slate-800">
+                        <ArrowRight size={24} className="text-slate-600"/>
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-white">Select a job</h3>
+                        <p className="text-sm text-slate-500">View details, applying options, and insights here.</p>
+                    </div>
+                 </div>
               </div>
           )}
       </div>
