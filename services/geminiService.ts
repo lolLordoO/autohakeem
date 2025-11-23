@@ -218,9 +218,10 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     return retryWrapper(async () => {
         const ai = getClient();
+        // Relaxed timeframe to 30 days to ensure data availability
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (LAST 7 DAYS) for Hiring Signals.
+            contents: `Deep search UAE Business News (LAST 30 DAYS) for Hiring Signals.
             Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
             
             Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
@@ -233,7 +234,7 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
             5. Executive Hires (New CTO/CMO usually means team expansion)
             6. Stealth Startups emerging in Hub71/In5.
             
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. If no signals found, return []. Do not write explanations.
+            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS. NO 'I found these signals'. JUST JSON.
             JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1", "Role2"] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -245,14 +246,15 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
 export const findTechEvents = async (): Promise<TechEvent[]> => {
     return retryWrapper(async () => {
         const ai = getClient();
+        // Relaxed source constraint to find more events
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 20+ upcoming Tech/Business events in Dubai, Abu Dhabi & Sharjah (Next 60 days).
-            Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs, DWTC.
+            contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah.
+            Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs, DWTC, University Career Fairs.
             
             Constraint: Physical events in UAE only.
             
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. If no events found, return [].
+            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
             JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });

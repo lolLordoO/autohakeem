@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Zap, RefreshCw, ArrowRight, Target, ExternalLink } from 'lucide-react';
+import { Zap, RefreshCw, ArrowRight, Target, ExternalLink, AlertCircle } from 'lucide-react';
 import { analyzeMarketSignals } from '../services/geminiService';
 import { getSavedSignals, saveSignals } from '../services/storageService';
 import { MarketSignal } from '../types';
@@ -12,17 +12,22 @@ interface MarketSignalsProps {
 const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
     const [signals, setSignals] = useState<MarketSignal[]>([]);
     const [loading, setLoading] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
 
     useEffect(() => {
         const saved = getSavedSignals();
-        if (saved.length > 0) setSignals(saved);
-        // Auto-scan removed as per request
+        if (saved.length > 0) {
+            setSignals(saved);
+            setHasSearched(true);
+        }
     }, []);
 
     const handleScan = async () => {
         setLoading(true);
+        setSignals([]); // Clear old results to show we are working
         try {
             const results = await analyzeMarketSignals();
+            setHasSearched(true);
             if (results.length > 0) {
                 setSignals(results);
                 saveSignals(results);
@@ -32,9 +37,7 @@ const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
     }
 
     const verifySignal = (signal: MarketSignal) => {
-        // Specific News Search for verification
         const q = encodeURIComponent(`${signal.company} ${signal.signalType} UAE news`);
-        // Use tbs=qdr:m to filter for past month only
         window.open(`https://www.google.com/search?q=${q}&tbs=qdr:m`, '_blank');
     }
 
@@ -51,13 +54,24 @@ const MarketSignals: React.FC<MarketSignalsProps> = ({ onSignalAction }) => {
             </div>
 
             <div className="flex-1 overflow-y-auto pb-20">
-                {signals.length === 0 && !loading ? (
+                {!hasSearched && !loading && (
                     <div className="flex flex-col items-center justify-center h-full text-slate-500 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/10">
                         <Zap size={48} className="mb-4 opacity-20" />
                         <p className="font-medium">Market Pulse is waiting.</p>
                         <p className="text-xs mt-2">Click "Scan Signals" to analyze recent UAE market movements.</p>
                     </div>
-                ) : (
+                )}
+                
+                {hasSearched && signals.length === 0 && !loading && (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                        <AlertCircle size={48} className="mb-4 text-orange-400 opacity-50" />
+                        <p className="font-medium text-white">No signals found in the last 30 days.</p>
+                        <p className="text-xs mt-2">Try scanning again later or check your internet connection.</p>
+                        <button onClick={handleScan} className="mt-4 text-brand-400 hover:text-brand-300 text-sm font-bold">Try Again</button>
+                    </div>
+                )}
+
+                {signals.length > 0 && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                         {signals.map(signal => (
                             <div key={signal.id} className="bg-dark-card border border-dark-border p-5 rounded-xl hover:border-brand-500/50 transition-all group">
