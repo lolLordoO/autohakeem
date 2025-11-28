@@ -96,6 +96,27 @@ export interface ATSAnalysis {
   suggestedBullet?: string;
 }
 
+// NEW: Job Sense Deep Analysis
+export interface JobSenseAnalysis {
+    jobTitle: string;
+    company: string;
+    roleSummary: string;
+    companyVibe: string; // Culture/Reputation
+    matchScore: number;
+    salaryAnalysis: {
+        estimated: string;
+        marketAvg: string;
+        status: 'Below Market' | 'Fair' | 'Above Market' | 'Unknown';
+    };
+    atsGap: {
+        score: number;
+        missingSkills: string[];
+    };
+    redFlags: string[]; // e.g., "High turnover", "Vague description"
+    greenFlags: string[];
+    strategicAdvice: string; // "How to win this"
+}
+
 export interface ApplicationRecord extends JobOpportunity {
   appliedDate: string;
   applicationMaterials: GeneratedContent;

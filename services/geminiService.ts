@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone, JobSenseAnalysis } from "../types";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -676,5 +676,54 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
+    });
+}
+
+// --- NEW JOB SENSE AGENT ---
+export const analyzeJobSense = async (jobUrl: string): Promise<JobSenseAnalysis> => {
+    return retryWrapper(async () => {
+        const ai = getClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Analyze this Job URL thoroughly: "${jobUrl}".
+            
+            Candidate: ${ABDUL_CV_TEXT.substring(0, 1000)}
+            
+            TASK: Perform a forensic analysis of the role, company, and market fit.
+            
+            STEPS:
+            1. Scrape/Search for the job details using the URL.
+            2. Research the Company (Reputation, Size, Culture).
+            3. Estimate Salary based on UAE Market for this specific title.
+            4. Compare Job vs Candidate CV (ATS Gap Analysis).
+            
+            ${NATURAL_RULES}
+            
+            CRITICAL: Output must be a valid JSON object. Do not include markdown formatting (like \`\`\`json). Do not include conversational text.
+            JSON OUTPUT STRICTLY:
+            {
+                "jobTitle": "string",
+                "company": "string",
+                "roleSummary": "Brief 1-sentence summary of what they actually want.",
+                "companyVibe": "e.g. 'Fast-paced crypto startup, high burn rate' or 'Stable gov entity'",
+                "matchScore": number (0-100),
+                "salaryAnalysis": {
+                    "estimated": "e.g. AED 25k - 30k",
+                    "marketAvg": "e.g. AED 22k",
+                    "status": "Below Market" | "Fair" | "Above Market" | "Unknown"
+                },
+                "atsGap": {
+                    "score": number (0-100),
+                    "missingSkills": ["skill1", "skill2"]
+                },
+                "redFlags": ["flag1", "flag2"],
+                "greenFlags": ["flag1", "flag2"],
+                "strategicAdvice": "1-2 sentences on how to position for this specific win."
+            }`,
+            config: { 
+                tools: [{ googleSearch: {} }]
+            }
+        });
+        return cleanAndParseJSON(response.text || "{}");
     });
 }
