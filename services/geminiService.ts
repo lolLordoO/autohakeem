@@ -652,7 +652,7 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
         config: { responseMimeType: "application/json" }
       });
       return JSON.parse(response.text || "{}");
-  });
+    });
 };
 
 export const refineContent = async (content: GeneratedContent, instruction: string): Promise<GeneratedContent> => {
@@ -696,47 +696,85 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
             contents: `Evaluate UAE Job Offer. Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
             Compare against UAE cost of living for that specific emirate.
             
+            TASK: 
+            1. Search for current 2025 rent prices in ${location} (e.g. Studio/1BHK) to validate disposable income.
+            2. Compare offer vs market standard using UAE_SALARY_BENCHMARKS.
+            
             ${UAE_SALARY_BENCHMARKS}
             
             ${NATURAL_RULES}
             
             JSON Output: { "salary": number, "currency": "AED", "benefitsScore": number, "commuteMinutes": number, "growthPotential": number, "totalScore": number, "recommendation": "string" }`,
-            config: { responseMimeType: "application/json" }
+            config: { 
+                tools: [{ googleSearch: {} }]
+            }
         });
-        return JSON.parse(response.text || "{}");
+        return cleanAndParseJSON(response.text || "{}");
     });
 }
 
 // --- NEW JOB SENSE AGENT ---
-export const analyzeJobSense = async (jobUrl: string): Promise<JobSenseAnalysis> => {
+export const analyzeJobSense = async (jobUrl: string, manualCompany: string, manualJd: string, persona: PersonaType): Promise<JobSenseAnalysis> => {
     return retryWrapper(async () => {
         const ai = getClient();
+        
+        let focusInstruction = "";
+        let cvUrl = "";
+        
+        if (persona === PersonaType.MARKETING) {
+            focusInstruction = "Focus STRICTLY on Content Strategy, SEO, Lead Gen, and Growth Metrics ($2M funding, 40% MQLs).";
+            cvUrl = USER_PROFILE.websites[PersonaType.MARKETING];
+        } else if (persona === PersonaType.PMO) {
+            focusInstruction = "Focus STRICTLY on Agile/Scrum, Project Delivery, Stakeholder Management, and Technical Leadership.";
+            cvUrl = USER_PROFILE.websites[PersonaType.PMO];
+        } else {
+             focusInstruction = "Focus on the Hybrid Skillset (Tech + Marketing + Product).";
+             cvUrl = USER_PROFILE.websites[PersonaType.ULT];
+        }
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Analyze this Job URL thoroughly: "${jobUrl}".
+            contents: `Analyze this Job Target as a Career Strategist.
             
-            Candidate: ${ABDUL_CV_TEXT.substring(0, 1000)}
+            INPUTS:
+            - URL: "${jobUrl}"
+            - Manual Company Name: "${manualCompany}" (PRIORITY)
+            - Manual Job Description: "${manualJd.substring(0, 1500)}" (PRIORITY GROUND TRUTH)
+            - Candidate Persona: ${persona} (${cvUrl})
+            - CV Context: ${ABDUL_CV_TEXT.substring(0, 1000)}
             
             ${UAE_SALARY_BENCHMARKS}
             
-            TASK: Perform a forensic analysis of the role, company, and market fit.
+            TASK: Perform a forensic analysis and validation.
             
-            STEPS:
-            1. Scrape/Search for the job details using the URL.
-            2. Research the Company (Reputation, Size, Culture).
-            3. SALARY FORENSICS: Search for 'Company Name salaries UAE' to get real data. If unavailable, derive a tight estimate using the UAE_SALARY_BENCHMARKS based on the specific Job Title and requirements.
-            4. Compare Job vs Candidate CV (ATS Gap Analysis).
+            CRITICAL STEPS:
+            1. VALIDATION (Search Tool): 
+               - Does the company exist in UAE? 
+               - Is there a real job listing?
+               - Use 'googleSearch' to verify.
+               
+            2. PERSONA FIT:
+               - ${focusInstruction}
+               - Does this job match the SELECTED persona?
+            
+            3. SALARY FORENSICS: Search for '[Company] salaries UAE [Job Title]'.
             
             ${NATURAL_RULES}
             
-            CRITICAL: Output must be a valid JSON object. Do not include markdown formatting (like \`\`\`json). Do not include conversational text.
+            CRITICAL: Output must be a valid JSON object.
             JSON OUTPUT STRICTLY:
             {
                 "jobTitle": "string",
                 "company": "string",
-                "roleSummary": "Brief 1-sentence summary of what they actually want.",
-                "companyVibe": "e.g. 'Fast-paced crypto startup, high burn rate' or 'Stable gov entity'",
+                "roleSummary": "Brief 1-sentence summary.",
+                "companyVibe": "e.g. 'Fast-paced crypto startup' or 'Stable gov entity'",
                 "matchScore": number (0-100),
+                "usedPersona": "${persona}",
+                "verification": {
+                    "isCompanyReal": boolean,
+                    "isJobReal": boolean,
+                    "notes": "e.g. 'Company verified on LinkedIn, but exact job not found in public index.'"
+                },
                 "salaryAnalysis": {
                     "estimated": "e.g. AED 25k - 30k",
                     "marketAvg": "e.g. AED 22k",

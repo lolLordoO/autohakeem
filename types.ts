@@ -103,6 +103,12 @@ export interface JobSenseAnalysis {
     roleSummary: string;
     companyVibe: string; // Culture/Reputation
     matchScore: number;
+    usedPersona: PersonaType; // Which profile was used
+    verification: {
+        isCompanyReal: boolean;
+        isJobReal: boolean; // Based on search signals
+        notes: string;
+    };
     salaryAnalysis: {
         estimated: string;
         marketAvg: string;

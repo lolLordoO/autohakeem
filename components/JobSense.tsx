@@ -1,26 +1,32 @@
 
 import React, { useState } from 'react';
-import { Microscope, Search, AlertTriangle, CheckCircle, TrendingUp, DollarSign, BrainCircuit, Loader2, Link as LinkIcon, Briefcase } from 'lucide-react';
+import { Microscope, Search, AlertTriangle, CheckCircle, TrendingUp, DollarSign, BrainCircuit, Loader2, Link as LinkIcon, Briefcase, FileText, Building2, UserCircle, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { analyzeJobSense } from '../services/geminiService';
-import { JobSenseAnalysis } from '../types';
+import { JobSenseAnalysis, PersonaType } from '../types';
 
 const JobSense: React.FC = () => {
     const [url, setUrl] = useState('');
+    const [manualCompany, setManualCompany] = useState('');
+    const [manualJd, setManualJd] = useState('');
+    const [persona, setPersona] = useState<PersonaType>(PersonaType.MARKETING);
     const [analysis, setAnalysis] = useState<JobSenseAnalysis | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
     const handleAnalyze = async () => {
-        if (!url) return;
+        if (!url && !manualJd) {
+            setError("Please provide at least a URL or Paste the Job Description.");
+            return;
+        }
         setIsLoading(true);
         setError('');
         setAnalysis(null);
         try {
-            const result = await analyzeJobSense(url);
-            if (!result.jobTitle) throw new Error("Could not parse job details. Link might be invalid.");
+            const result = await analyzeJobSense(url, manualCompany, manualJd, persona);
+            if (!result.jobTitle) throw new Error("Could not parse job details. Please ensure the Job Description is clear.");
             setAnalysis(result);
         } catch (e: any) {
-            setError(e.message || "Failed to analyze job link. Please try a direct career page link.");
+            setError(e.message || "Failed to analyze. Please try providing more details manually.");
         } finally {
             setIsLoading(false);
         }
@@ -28,39 +34,94 @@ const JobSense: React.FC = () => {
 
     return (
         <div className="p-8 h-screen flex flex-col bg-dark-bg">
-            <div className="mb-8">
+            <div className="mb-6 shrink-0">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                     <Microscope className="text-cyan-400"/> Job Sense
                 </h2>
-                <p className="text-slate-400 text-sm mt-1">Forensic Job Analysis & Market Reality Check</p>
+                <p className="text-slate-400 text-sm mt-1">Forensic Job Analysis & Persona Fit Check</p>
             </div>
 
             {/* Input Section */}
-            <div className="bg-dark-card border border-dark-border p-6 rounded-xl mb-8 shadow-lg">
-                <label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Job Post URL</label>
-                <div className="flex gap-3">
-                    <div className="relative flex-1">
-                        <input 
-                            type="text" 
-                            value={url}
-                            onChange={(e) => setUrl(e.target.value)}
-                            placeholder="Paste LinkedIn, Indeed, or Career Page URL..."
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:border-cyan-500 outline-none transition-colors"
-                            onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                        />
-                        <LinkIcon className="absolute left-3 top-3.5 text-slate-500" size={16}/>
+            <div className="bg-dark-card border border-dark-border p-6 rounded-xl mb-6 shadow-lg shrink-0">
+                
+                {/* Persona Selector */}
+                <div className="mb-6">
+                    <label className="text-xs text-slate-500 font-bold uppercase mb-2 flex items-center gap-2"><UserCircle size={14}/> Select Active Persona</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {Object.values(PersonaType).map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => setPersona(p)}
+                                className={`px-4 py-3 rounded-lg text-sm font-bold border transition-all flex items-center justify-center gap-2 ${
+                                    persona === p 
+                                    ? 'bg-cyan-900/30 border-cyan-500 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.2)]' 
+                                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-300'
+                                }`}
+                            >
+                                {p === PersonaType.MARKETING && <FileText size={16}/>}
+                                {p === PersonaType.PMO && <Briefcase size={16}/>}
+                                {p === PersonaType.ULT && <BrainCircuit size={16}/>}
+                                {p}
+                            </button>
+                        ))}
                     </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Link (Optional)</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={url}
+                                onChange={(e) => setUrl(e.target.value)}
+                                placeholder="Paste URL (LinkedIn/Indeed)..."
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-cyan-500 outline-none text-sm transition-colors"
+                            />
+                            <LinkIcon className="absolute left-3 top-3 text-slate-500" size={14}/>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Company Name (Recommended)</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={manualCompany}
+                                onChange={(e) => setManualCompany(e.target.value)}
+                                placeholder="e.g. Careem, Talabat..."
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-cyan-500 outline-none text-sm transition-colors"
+                            />
+                            <Building2 className="absolute left-3 top-3 text-slate-500" size={14}/>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mb-4">
+                    <label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Job Description (Highly Recommended for Accuracy)</label>
+                    <div className="relative">
+                        <textarea 
+                            value={manualJd}
+                            onChange={(e) => setManualJd(e.target.value)}
+                            placeholder="Paste the full job description text here to prevent hallucinations..."
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:border-cyan-500 outline-none text-sm transition-colors h-24 resize-none leading-relaxed"
+                        />
+                        <FileText className="absolute left-3 top-3 text-slate-500" size={14}/>
+                    </div>
+                </div>
+
+                <div className="flex justify-end">
                     <button 
                         onClick={handleAnalyze} 
-                        disabled={isLoading || !url}
-                        className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white px-6 rounded-lg font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-500/20"
+                        disabled={isLoading}
+                        className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white px-8 py-2.5 rounded-lg font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-500/20"
                     >
-                        {isLoading ? <Loader2 className="animate-spin"/> : <Search size={18}/>} 
-                        Analyze
+                        {isLoading ? <Loader2 className="animate-spin" size={18}/> : <Search size={18}/>} 
+                        Analyze Target
                     </button>
                 </div>
+
                 {error && (
-                    <div className="mt-4 p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-red-300 text-sm flex items-center gap-2">
+                    <div className="mt-4 p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-red-300 text-sm flex items-center gap-2 animate-in fade-in">
                         <AlertTriangle size={16}/> {error}
                     </div>
                 )}
@@ -68,23 +129,40 @@ const JobSense: React.FC = () => {
 
             {/* Results Dashboard */}
             {analysis ? (
-                <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6 pb-20 animate-in slide-in-from-bottom-4">
+                <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6 pb-20 animate-in slide-in-from-bottom-4 custom-scrollbar">
                     {/* Header Card */}
-                    <div className="lg:col-span-3 bg-gradient-to-r from-slate-900 to-cyan-900/20 border border-slate-700 rounded-xl p-6 flex justify-between items-start">
-                        <div>
-                            <div className="text-xs text-cyan-400 font-bold uppercase mb-1">Target Identified</div>
-                            <h3 className="text-2xl font-bold text-white">{analysis.jobTitle}</h3>
-                            <div className="flex items-center gap-2 text-slate-300 mt-1">
-                                <Briefcase size={14}/> {analysis.company}
+                    <div className="lg:col-span-3 bg-gradient-to-r from-slate-900 to-cyan-900/20 border border-slate-700 rounded-xl p-6">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <div className="text-xs text-cyan-400 font-bold uppercase mb-1">Target Identified</div>
+                                <h3 className="text-2xl font-bold text-white">{analysis.jobTitle}</h3>
+                                <div className="flex items-center gap-2 text-slate-300 mt-1">
+                                    <Building2 size={14}/> {analysis.company}
+                                </div>
                             </div>
-                            <p className="text-sm text-slate-400 mt-4 max-w-2xl italic">"{analysis.roleSummary}"</p>
-                        </div>
-                        <div className="text-right">
-                            <div className="text-xs text-slate-500 font-bold uppercase">Match Score</div>
-                            <div className={`text-4xl font-bold ${analysis.matchScore > 80 ? 'text-green-400' : analysis.matchScore > 50 ? 'text-orange-400' : 'text-red-400'}`}>
-                                {analysis.matchScore}%
+                            <div className="text-right">
+                                <div className="text-xs text-slate-500 font-bold uppercase">Persona Match</div>
+                                <div className={`text-4xl font-bold ${analysis.matchScore > 80 ? 'text-green-400' : analysis.matchScore > 50 ? 'text-orange-400' : 'text-red-400'}`}>
+                                    {analysis.matchScore}%
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1">{analysis.usedPersona}</div>
                             </div>
                         </div>
+                        
+                        {/* Verification Badge */}
+                        <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700 flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                {analysis.verification?.isCompanyReal ? <ShieldCheck className="text-green-500" size={16}/> : <ShieldAlert className="text-red-500" size={16}/>}
+                                <span className="text-xs text-slate-300 font-bold">Company: {analysis.verification?.isCompanyReal ? 'Verified' : 'Unverified'}</span>
+                            </div>
+                             <div className="flex items-center gap-2">
+                                {analysis.verification?.isJobReal ? <ShieldCheck className="text-green-500" size={16}/> : <ShieldAlert className="text-orange-500" size={16}/>}
+                                <span className="text-xs text-slate-300 font-bold">Job Status: {analysis.verification?.isJobReal ? 'Likely Active' : 'Unknown/Unverified'}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 ml-auto hidden md:inline">{analysis.verification?.notes}</span>
+                        </div>
+                        
+                        <p className="text-sm text-slate-400 mt-4 max-w-4xl italic border-l-2 border-cyan-500/30 pl-4">"{analysis.roleSummary}"</p>
                     </div>
 
                     {/* Salary & Vibe */}
@@ -109,7 +187,7 @@ const JobSense: React.FC = () => {
 
                     {/* ATS Gap */}
                     <div className="bg-dark-card border border-dark-border rounded-xl p-6">
-                        <h4 className="text-slate-400 text-xs font-bold uppercase mb-4 flex items-center gap-2"><BrainCircuit size={14}/> ATS Analysis</h4>
+                        <h4 className="text-slate-400 text-xs font-bold uppercase mb-4 flex items-center gap-2"><BrainCircuit size={14}/> ATS Analysis ({analysis.usedPersona})</h4>
                         <div className="mb-4">
                             <div className="flex justify-between text-sm mb-1 text-slate-300">
                                 <span>ATS Score</span>
@@ -134,7 +212,7 @@ const JobSense: React.FC = () => {
                     <div className="bg-dark-card border border-dark-border rounded-xl p-6 flex flex-col gap-4">
                         <div>
                             <h4 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2"><TrendingUp size={14}/> Strategic Advice</h4>
-                            <p className="text-sm text-cyan-100 bg-cyan-900/20 p-3 rounded border border-cyan-500/30">
+                            <p className="text-sm text-cyan-100 bg-cyan-900/20 p-3 rounded border border-cyan-500/30 leading-relaxed">
                                 {analysis.strategicAdvice}
                             </p>
                         </div>
@@ -158,7 +236,8 @@ const JobSense: React.FC = () => {
                 !isLoading && (
                     <div className="flex-1 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/10">
                         <Microscope size={48} className="mb-4 opacity-20"/>
-                        <p>Paste a job URL to start the investigation.</p>
+                        <p className="font-medium">Enter details to start the investigation.</p>
+                        <p className="text-xs mt-2 text-slate-600">Manual JD input provides the most accurate results.</p>
                     </div>
                 )
             )}
