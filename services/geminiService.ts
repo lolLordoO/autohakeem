@@ -148,6 +148,29 @@ const getFocusKeywords = (focus: SearchFocus): string => {
     }
 }
 
+// --- UAE MARKET INTELLIGENCE CONSTANTS ---
+const UAE_SALARY_BENCHMARKS = `
+UAE SALARY BENCHMARKS (AED/Month) [2025 Real Data]:
+- Marketing & Content:
+  - Junior (0-2y): 8,000 - 12,000
+  - Specialist/Strategist (2-5y): 12,000 - 18,000
+  - Manager (5y+): 20,000 - 30,000
+  - Head/Director: 35,000+
+- Project Management (PMO):
+  - Junior PM (0-2y): 10,000 - 15,000
+  - Project Manager (3-5y): 18,000 - 28,000
+  - Senior PM / Product Owner: 30,000 - 45,000
+- Tech / AI / Web3:
+  - Junior Dev (0-2y): 12,000 - 18,000
+  - Senior Dev / Engineer (3-5y): 25,000 - 35,000
+  - AI/Web3 Specialist: 25,000 - 45,000
+  - CTO/Head of Tech: 50,000+
+- Adjustments:
+  - MNCs / Government: +20%
+  - Early Stage Startups: -15% (often equity heavy)
+  - Location: Dubai (Base), Abu Dhabi (+5%), Sharjah (-15%)
+`;
+
 // --- GLOBAL NATURAL WRITING RULES ---
 const NATURAL_RULES = `
 STRICT WRITING RULES (NATURAL & HUMAN):
@@ -211,6 +234,8 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         
         TASK: Find 30 REAL, LIVE, FRESH job listings in the UAE matching: "${query} ${focusKeywords}".
         
+        ${UAE_SALARY_BENCHMARKS}
+
         STRICT SEARCH CRITERIA:
         1. FRESHNESS: Listings MUST be posted AFTER ${dateString} (Last 30 days). Ignore old/expired roles.
         2. LOCATION: STRICTLY "United Arab Emirates", "Dubai", "Abu Dhabi", or "Sharjah".
@@ -220,8 +245,9 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         DATA INTEGRITY:
         - ZERO HALLUCINATIONS: If you cannot find a verified deep link, return null for 'url'. Do NOT invent URLs.
         - VERIFY DATES: Check the snippet for relative dates like "2 days ago", "1 week ago". Discard "2 months ago".
+        - SALARY LOGIC: If exact salary is missing, use the UAE_SALARY_BENCHMARKS matrix to calculate a realistic range based on the Title + Company Tier.
         
-        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate", "matchGrade": "S"|"A"|"B"|"C" }]`,
+        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate": "e.g. AED 12k-15k", "matchGrade": "S"|"A"|"B"|"C" }]`,
         config: { tools: [{ googleSearch: {} }] }
       });
       
@@ -670,6 +696,8 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
             contents: `Evaluate UAE Job Offer. Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
             Compare against UAE cost of living for that specific emirate.
             
+            ${UAE_SALARY_BENCHMARKS}
+            
             ${NATURAL_RULES}
             
             JSON Output: { "salary": number, "currency": "AED", "benefitsScore": number, "commuteMinutes": number, "growthPotential": number, "totalScore": number, "recommendation": "string" }`,
@@ -689,12 +717,14 @@ export const analyzeJobSense = async (jobUrl: string): Promise<JobSenseAnalysis>
             
             Candidate: ${ABDUL_CV_TEXT.substring(0, 1000)}
             
+            ${UAE_SALARY_BENCHMARKS}
+            
             TASK: Perform a forensic analysis of the role, company, and market fit.
             
             STEPS:
             1. Scrape/Search for the job details using the URL.
             2. Research the Company (Reputation, Size, Culture).
-            3. Estimate Salary based on UAE Market for this specific title.
+            3. SALARY FORENSICS: Search for 'Company Name salaries UAE' to get real data. If unavailable, derive a tight estimate using the UAE_SALARY_BENCHMARKS based on the specific Job Title and requirements.
             4. Compare Job vs Candidate CV (ATS Gap Analysis).
             
             ${NATURAL_RULES}
