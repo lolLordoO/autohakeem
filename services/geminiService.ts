@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
-import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone, JobSenseAnalysis } from "../types";
+import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone, JobSenseAnalysis, JobFilters } from "../types";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -208,46 +208,92 @@ export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<st
   }));
 };
 
-export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL): Promise<JobOpportunity[]> => {
-  // Use a date-based cache key to ensure we fetch fresh results every day
+export const getFreshJobDrops = async (): Promise<JobOpportunity[]> => {
+    // Cache strictly for 20 minutes to keep it fresh but safe
+    return smartCache(`fresh_drops_24h`, () => retryWrapper(async () => {
+        const ai = getClient();
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Find 5 HIGH PRIORITY jobs posted in the LAST 24 HOURS in UAE for this profile:
+            "${ABDUL_CV_TEXT.substring(0, 600)}"
+            
+            Target Roles: Marketing Strategist, Technical PM, Content Manager, Web3 Product.
+            Location: UAE Only.
+            
+            CRITICAL INSTRUCTION:
+            - Look for snippets saying "2 hours ago", "14 hours ago", "Today", "Yesterday".
+            - IGNORE anything older than 1 day.
+            - Focus on HIGH PAYING or HIGH GROWTH companies (MNCs, Funded Startups).
+            
+            JSON Output: [{ "title", "company", "location", "source", "url", "postedDate": "e.g. 4 hours ago", "salaryEstimate": "e.g. AED 15k+", "matchReason": "Why fits profile?" }]`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        
+        const raw = cleanAndParseJSON(response.text || "[]");
+        if (!Array.isArray(raw)) return [];
+        
+        return raw.map((job: any) => ({
+            id: 'fresh-' + Math.random().toString(36).substr(2, 9),
+            title: job.title,
+            company: job.company,
+            location: job.location || "UAE",
+            source: job.source || "Fresh Drop",
+            url: isValidJobUrl(job.url) ? job.url : null,
+            search_query: `site:linkedin.com/jobs "${job.title}" "${job.company}"`,
+            description: `Freshly posted role (${job.postedDate}). High priority match.`,
+            salaryEstimate: job.salaryEstimate,
+            matchGrade: 'S',
+            matchReason: job.matchReason,
+            dateFound: new Date().toISOString(),
+            postedDate: job.postedDate,
+            isFresh: true,
+            status: 'found'
+        }));
+    }), 20);
+}
+
+export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL, filters?: JobFilters): Promise<JobOpportunity[]> => {
+  // Use a date-based cache key + filter hash
+  const filterKey = filters ? `${filters.emirate}_${filters.level}_${filters.dateRange}` : 'default';
   const dateKey = new Date().toISOString().split('T')[0];
   
-  return smartCache(`jobs_${query}_${focus}_${dateKey}`, () => retryWrapper(async () => {
+  return smartCache(`jobs_${query}_${focus}_${filterKey}_${dateKey}`, () => retryWrapper(async () => {
       const ai = getClient();
       
       const focusKeywords = getFocusKeywords(focus);
       
-      // FRESHNESS LOGIC: Calculate date 30 days ago
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      const dateString = oneMonthAgo.toISOString().split('T')[0];
+      // Calculate date based on filter
+      let dateString = '';
+      const now = new Date();
+      if (filters?.dateRange === 'Past 24h') now.setDate(now.getDate() - 1);
+      else if (filters?.dateRange === 'Past Week') now.setDate(now.getDate() - 7);
+      else now.setDate(now.getDate() - 30); // Default month
+      dateString = now.toISOString().split('T')[0];
       
-      // Google Search "after:" operator helps enforce freshness at the source level
-      const freshnessOperator = `after:${dateString}`;
-      
-      const searchOperators = "site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:gulftalent.com OR site:indeed.com OR site:laimoon.com OR site:hub71.com/careers OR site:oliv.com OR site:dubizzle.com/jobs";
+      const locationConstraint = filters?.emirate && filters.emirate !== 'All' ? `AND "${filters.emirate}"` : 'AND ("Dubai" OR "Abu Dhabi" OR "Sharjah")';
+      const levelConstraint = filters?.level && filters.level !== 'All' ? `AND "${filters.level}"` : 'AND (Junior OR Associate OR Specialist OR Manager)';
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Act as a Headhunter finding "Best Fit" jobs for this Candidate Profile:
-        "${ABDUL_CV_TEXT.substring(0, 500)}"
+        contents: `Act as a Headhunter. Find 20 LIVE job listings in the UAE.
         
-        TASK: Find 30 REAL, LIVE, FRESH job listings in the UAE matching: "${query} ${focusKeywords}".
+        SEARCH QUERY: "${query} ${focusKeywords}"
+        CONSTRAINTS: 
+        - Posted AFTER: ${dateString}
+        - Location: ${locationConstraint}
+        - Level: ${levelConstraint}
+        
+        CANDIDATE: ${ABDUL_CV_TEXT.substring(0, 500)}
         
         ${UAE_SALARY_BENCHMARKS}
-
-        STRICT SEARCH CRITERIA:
-        1. FRESHNESS: Listings MUST be posted AFTER ${dateString} (Last 30 days). Ignore old/expired roles.
-        2. LOCATION: STRICTLY "United Arab Emirates", "Dubai", "Abu Dhabi", or "Sharjah".
-        3. EXPERIENCE: 0-4 Years only. Exclude "Senior Manager" (5+ yrs), "Director", "VP", "Head". 
-        4. BEST FIT: Prioritize roles matching candidate's AI, Web3, and Content Strategy skills.
         
         DATA INTEGRITY:
-        - ZERO HALLUCINATIONS: If you cannot find a verified deep link, return null for 'url'. Do NOT invent URLs.
-        - VERIFY DATES: Check the snippet for relative dates like "2 days ago", "1 week ago". Discard "2 months ago".
-        - SALARY LOGIC: If exact salary is missing, use the UAE_SALARY_BENCHMARKS matrix to calculate a realistic range based on the Title + Company Tier.
+        - ZERO HALLUCINATIONS: If no deep link, return null.
+        - SALARY LOGIC: Estimate using the benchmark matrix if hidden.
+        - VERIFY: Filter out duplicates and "Ghost Jobs".
         
-        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "applyUrl", "applyEmail", "description", "salaryEstimate": "e.g. AED 12k-15k", "matchGrade": "S"|"A"|"B"|"C" }]`,
+        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "description", "salaryEstimate": "e.g. AED 12k-15k", "matchGrade": "S"|"A"|"B"|"C", "matchReason": "Short reason" }]`,
         config: { tools: [{ googleSearch: {} }] }
       });
       
@@ -256,15 +302,10 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
 
       const seen = new Set<string>();
       const uniqueJobs = rawJobs.filter((job: any) => {
-          // De-duplication key
           const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
-          
           if (seen.has(key)) return false;
-          
-          // Garbage Filtering
-          if (!job.title || job.title.toLowerCase().includes('not found') || job.title.toLowerCase().includes('job title')) return false;
+          if (!job.title || job.title.toLowerCase().includes('not found')) return false;
           if (!job.company) return false;
-          
           seen.add(key);
           return true;
       });
@@ -277,11 +318,10 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         source: job.source || "Web Search",
         url: isValidJobUrl(job.url) ? job.url : null,
         search_query: job.search_query || `site:linkedin.com/jobs "${job.title}" "${job.company}" UAE`,
-        applyUrl: isValidJobUrl(job.applyUrl) ? job.applyUrl : null,
-        applyEmail: job.applyEmail || null,
         description: job.description,
         salaryEstimate: job.salaryEstimate || "AED Market Rate",
         matchGrade: job.matchGrade || 'B',
+        matchReason: job.matchReason || "Matched key skills",
         dateFound: new Date().toISOString(),
         status: 'found'
       }));
@@ -741,7 +781,7 @@ export const analyzeJobSense = async (jobUrl: string, manualCompany: string, man
             - Manual Company Name: "${manualCompany}" (PRIORITY)
             - Manual Job Description: "${manualJd.substring(0, 1500)}" (PRIORITY GROUND TRUTH)
             - Candidate Persona: ${persona} (${cvUrl})
-            - CV Context: ${ABDUL_CV_TEXT.substring(0, 1000)}
+            - CV Context: ${ABDUL_CV_TEXT.substring(0, 3000)}
             
             ${UAE_SALARY_BENCHMARKS}
             

@@ -33,6 +33,12 @@ export interface UserProfile {
 
 export type MatchGrade = 'S' | 'A' | 'B' | 'C'; // S = Perfect, C = Low
 
+export interface JobFilters {
+    emirate: 'All' | 'Dubai' | 'Abu Dhabi' | 'Sharjah' | 'Remote';
+    level: 'All' | 'Junior' | 'Mid-Senior' | 'Lead/Manager';
+    dateRange: 'Any' | 'Past 24h' | 'Past Week' | 'Past Month';
+}
+
 export interface JobOpportunity {
   id: string;
   title: string;
@@ -46,8 +52,11 @@ export interface JobOpportunity {
   description?: string;
   salaryEstimate?: string; // e.g. "AED 15,000 - 20,000"
   dateFound: string;
+  postedDate?: string; // e.g., "2 hours ago"
   status: 'found' | 'applied' | 'interviewing' | 'rejected' | 'offer';
   matchGrade?: MatchGrade; // New AI Verdict
+  matchReason?: string; // "Why" this job was shown
+  isFresh?: boolean; // If found in the 24h drop
 }
 
 export interface RecruiterProfile {
