@@ -1,4 +1,3 @@
-
 export enum PersonaType {
   MARKETING = 'Marketing & Content',
   PMO = 'Project Management',

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
 import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone, JobSenseAnalysis, JobFilters } from "../types";
@@ -771,72 +770,4 @@ export const analyzeJobSense = async (jobUrl: string, manualCompany: string, man
             cvUrl = USER_PROFILE.websites[PersonaType.MARKETING];
         } else if (persona === PersonaType.PMO) {
             focusInstruction = "Focus STRICTLY on Agile/Scrum, Project Delivery, Stakeholder Management, and Technical Leadership.";
-            cvUrl = USER_PROFILE.websites[PersonaType.PMO];
-        } else {
-             focusInstruction = "Focus on the Hybrid Skillset (Tech + Marketing + Product).";
-             cvUrl = USER_PROFILE.websites[PersonaType.ULT];
-        }
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Analyze this Job Target as a Career Strategist.
-            
-            INPUTS:
-            - URL: "${jobUrl}"
-            - Manual Company Name: "${manualCompany}" (PRIORITY)
-            - Manual Job Description: "${manualJd.substring(0, 1500)}" (PRIORITY GROUND TRUTH)
-            - Candidate Persona: ${persona} (${cvUrl})
-            - CV Context: ${ABDUL_CV_TEXT.substring(0, 3000)}
-            
-            ${UAE_SALARY_BENCHMARKS}
-            
-            TASK: Perform a forensic analysis and validation.
-            
-            CRITICAL STEPS:
-            1. VALIDATION (Search Tool): 
-               - Does the company exist in UAE? 
-               - Is there a real job listing?
-               - Use 'googleSearch' to verify.
-               
-            2. PERSONA FIT:
-               - ${focusInstruction}
-               - Does this job match the SELECTED persona?
-            
-            3. SALARY FORENSICS: Search for '[Company] salaries UAE [Job Title]'.
-            
-            ${NATURAL_RULES}
-            
-            CRITICAL: Output must be a valid JSON object.
-            JSON OUTPUT STRICTLY:
-            {
-                "jobTitle": "string",
-                "company": "string",
-                "roleSummary": "Brief 1-sentence summary.",
-                "companyVibe": "e.g. 'Fast-paced crypto startup' or 'Stable gov entity'",
-                "matchScore": number (0-100),
-                "usedPersona": "${persona}",
-                "verification": {
-                    "isCompanyReal": boolean,
-                    "isJobReal": boolean,
-                    "notes": "e.g. 'Company verified on LinkedIn, but exact job not found in public index.'"
-                },
-                "salaryAnalysis": {
-                    "estimated": "e.g. AED 25k - 30k",
-                    "marketAvg": "e.g. AED 22k",
-                    "status": "Below Market" | "Fair" | "Above Market" | "Unknown"
-                },
-                "atsGap": {
-                    "score": number (0-100),
-                    "missingSkills": ["skill1", "skill2"]
-                },
-                "redFlags": ["flag1", "flag2"],
-                "greenFlags": ["flag1", "flag2"],
-                "strategicAdvice": "1-2 sentences on how to position for this specific win."
-            }`,
-            config: { 
-                tools: [{ googleSearch: {} }]
-            }
-        });
-        return cleanAndParseJSON(response.text || "{}");
-    });
-}
+            cv
