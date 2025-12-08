@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, ExternalLink, Loader2, Plus, Mail, Globe, Sparkles, Linkedin, CheckCircle2, AlertTriangle, Building2, DollarSign, Filter, Copy, Flame, Trophy, Target, ArrowRight, X, Clock, Zap } from 'lucide-react';
-import { searchJobsInUAE, analyzeProfileForSearch, getFreshJobDrops } from '../services/geminiService';
+import { searchJobsInUAE, analyzeProfileForSearch } from '../services/geminiService';
 import { JobOpportunity, PersonaType, SearchFocus, MatchGrade, JobFilters } from '../types';
 import { getUiState, saveUiState } from '../services/storageService';
 
@@ -28,10 +28,6 @@ export default function JobSearch({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [searchFocus, setSearchFocus] = useState<SearchFocus>(SearchFocus.ALL);
   const [activeJob, setActiveJob] = useState<JobOpportunity | null>(null);
-  
-  // Fresh Drops State
-  const [freshDrops, setFreshDrops] = useState<JobOpportunity[]>([]);
-  const [loadingDrops, setLoadingDrops] = useState(false);
 
   // Filters
   const [filters, setFilters] = useState<JobFilters>({
@@ -44,21 +40,7 @@ export default function JobSearch({
   useEffect(() => {
       const saved = getUiState().jobSearchFocus;
       if (saved) setSearchFocus(saved as SearchFocus);
-      
-      // Auto-load Fresh Drops on mount if empty
-      if (freshDrops.length === 0) {
-          loadFreshDrops();
-      }
   }, []);
-
-  const loadFreshDrops = async () => {
-      setLoadingDrops(true);
-      try {
-          const drops = await getFreshJobDrops();
-          setFreshDrops(drops);
-      } catch(e) { console.error(e); }
-      finally { setLoadingDrops(false); }
-  }
 
   const handleFocusChange = (focus: SearchFocus) => {
       setSearchFocus(focus);
@@ -118,46 +100,7 @@ export default function JobSearch({
   return (
     <div className="h-screen flex flex-col bg-dark-bg overflow-hidden">
       
-      {/* 1. FRESH DROPS TICKER (Top Section) */}
-      <div className="bg-[#0B1221] border-b border-dark-border shrink-0">
-          <div className="max-w-7xl mx-auto p-4">
-              <div className="flex items-center gap-3 mb-3">
-                  <div className="flex items-center gap-2 text-white font-bold text-sm">
-                      <Flame className="text-orange-500 fill-orange-500 animate-pulse" size={16}/> 
-                      FRESH DROPS (Last 24h)
-                  </div>
-                  <button onClick={loadFreshDrops} disabled={loadingDrops} className="text-[10px] text-slate-500 hover:text-white">
-                      {loadingDrops ? "Scanning..." : "Refresh"}
-                  </button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                  {loadingDrops ? (
-                      [1,2,3,4,5].map(i => <div key={i} className="h-24 bg-slate-900/50 rounded-lg animate-pulse border border-slate-800"></div>)
-                  ) : freshDrops.length > 0 ? (
-                      freshDrops.map(job => (
-                          <div 
-                            key={job.id} 
-                            onClick={() => setActiveJob(job)}
-                            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-brand-500/50 rounded-lg p-3 cursor-pointer transition-all group min-w-[200px]"
-                          >
-                              <div className="flex justify-between items-start mb-1">
-                                  <span className="text-[10px] text-orange-400 font-bold flex items-center gap-1"><Clock size={10}/> {job.postedDate || "New"}</span>
-                                  <ExternalLink size={10} className="text-slate-600 group-hover:text-brand-400"/>
-                              </div>
-                              <div className="font-bold text-white text-xs truncate mb-0.5">{job.title}</div>
-                              <div className="text-[10px] text-slate-400 truncate">{job.company}</div>
-                              {job.salaryEstimate && <div className="text-[10px] text-emerald-500 mt-2 font-mono">{job.salaryEstimate}</div>}
-                          </div>
-                      ))
-                  ) : (
-                      <div className="col-span-full text-xs text-slate-500 italic">No fresh drops found yet. Click refresh to scan.</div>
-                  )}
-              </div>
-          </div>
-      </div>
-
-      {/* 2. SEARCH & FILTERS */}
+      {/* SEARCH & FILTERS */}
       <div className="p-6 border-b border-dark-border bg-dark-bg shrink-0">
           <div className="flex flex-col gap-4 max-w-7xl mx-auto w-full">
                {/* Search Row */}
@@ -394,3 +337,4 @@ export default function JobSearch({
     </div>
   );
 }
+    

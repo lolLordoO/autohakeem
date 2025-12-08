@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Search, Send, Briefcase, UserCircle, ListTodo, ChevronUp, ChevronDown, Copy, Phone, Mail, MapPin, ExternalLink, Globe, Zap, Calendar, Settings, PenTool, Microscope } from 'lucide-react';
+import { LayoutDashboard, Search, Send, Briefcase, UserCircle, ListTodo, ChevronUp, ChevronDown, Copy, Phone, Mail, MapPin, ExternalLink, Globe, Zap, Calendar, Settings, PenTool, Microscope, Flame } from 'lucide-react';
 import { USER_PROFILE } from '../constants';
 
 interface SidebarProps {
@@ -13,9 +13,10 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, toggleProfileHud, showProfileHud }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Mission Control', icon: LayoutDashboard },
+    { id: 'fresh-drops', label: 'Fresh Drops Radar', icon: Flame }, // New Item
     { id: 'signals', label: 'Market Pulse', icon: Zap },
     { id: 'search', label: 'Job Search', icon: Search },
-    { id: 'jobsense', label: 'Job Sense', icon: Microscope }, // New Item
+    { id: 'jobsense', label: 'Job Sense', icon: Microscope },
     { id: 'apply', label: 'Auto-Apply', icon: Briefcase },
     { id: 'brand', label: 'Brand Engine', icon: PenTool },
     { id: 'outreach', label: 'Recruiter Radar', icon: Send },
@@ -83,3 +84,4 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, toggleProfil
 };
 
 export default Sidebar;
+    

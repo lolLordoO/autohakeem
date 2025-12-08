@@ -208,22 +208,26 @@ export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<st
   }));
 };
 
-export const getFreshJobDrops = async (): Promise<JobOpportunity[]> => {
+export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportunity[]> => {
     // Cache strictly for 20 minutes to keep it fresh but safe
-    return smartCache(`fresh_drops_24h`, () => retryWrapper(async () => {
+    return smartCache(`fresh_drops_${hours}h`, () => retryWrapper(async () => {
         const ai = getClient();
         
+        const timePrompt = hours === 24 
+            ? "LAST 24 HOURS (Today, Yesterday)" 
+            : "LAST 48 HOURS (Today, Yesterday, 2 Days Ago)";
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 5 HIGH PRIORITY jobs posted in the LAST 24 HOURS in UAE for this profile:
+            contents: `Find 10 HIGH PRIORITY jobs posted in the ${timePrompt} in UAE for this profile:
             "${ABDUL_CV_TEXT.substring(0, 600)}"
             
             Target Roles: Marketing Strategist, Technical PM, Content Manager, Web3 Product.
             Location: UAE Only.
             
             CRITICAL INSTRUCTION:
-            - Look for snippets saying "2 hours ago", "14 hours ago", "Today", "Yesterday".
-            - IGNORE anything older than 1 day.
+            - Look for snippets saying "2 hours ago", "14 hours ago", "Today", "Yesterday", "1d ago".
+            - IGNORE anything older than ${hours} hours.
             - Focus on HIGH PAYING or HIGH GROWTH companies (MNCs, Funded Startups).
             
             JSON Output: [{ "title", "company", "location", "source", "url", "postedDate": "e.g. 4 hours ago", "salaryEstimate": "e.g. AED 15k+", "matchReason": "Why fits profile?" }]`,
@@ -283,6 +287,7 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         - Posted AFTER: ${dateString}
         - Location: ${locationConstraint}
         - Level: ${levelConstraint}
+        - Exclude: Ghost jobs, generic aggregators. Use 'site:linkedin.com/jobs' OR 'site:naukrigulf.com' OR 'site:indeed.com' where possible.
         
         CANDIDATE: ${ABDUL_CV_TEXT.substring(0, 500)}
         
@@ -611,8 +616,8 @@ export const analyzeJobFit = async (jobDescription: string): Promise<ATSAnalysis
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Analyze my fit for this JD.
-            CV: ${ABDUL_CV_TEXT.substring(0, 1000)}.
-            JD: ${jobDescription.substring(0, 1000)}.
+            CV: ${ABDUL_CV_TEXT.substring(0, 3000)}.
+            JD: ${jobDescription.substring(0, 2000)}.
 
             Task:
             1. Calculate a Match Score (0-100) based on keyword overlap.
@@ -671,8 +676,8 @@ export const generateApplicationMaterials = async (jobDescription: string, perso
       
       INPUTS:
       - PERSONA: ${persona}
-      - CV HIGHLIGHTS: ${ABDUL_CV_TEXT.substring(0, 1200)}
-      - JD: ${jobDescription.substring(0, 1000)}
+      - CV HIGHLIGHTS: ${ABDUL_CV_TEXT.substring(0, 3000)}
+      - JD: ${jobDescription.substring(0, 2000)}
       
       JSON OUTPUT FORMAT:
       {

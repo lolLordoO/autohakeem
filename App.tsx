@@ -12,7 +12,8 @@ import Events from './components/Events';
 import Settings from './components/Settings';
 import BrandEngine from './components/BrandEngine';
 import MockInterview from './components/MockInterview';
-import JobSense from './components/JobSense'; // New Import
+import JobSense from './components/JobSense';
+import FreshDrops from './components/FreshDrops'; // New Import
 import { JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile } from './types';
 import { USER_PROFILE } from './constants';
 import { Mail, MapPin, Globe, Copy, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
@@ -106,6 +107,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard />;
+      case 'fresh-drops': return <FreshDrops />; // New Route
       case 'signals': return <MarketSignals onSignalAction={handleSignalAction} />;
       case 'events': return <Events />;
       case 'search':
@@ -120,7 +122,7 @@ const App: React.FC = () => {
             onHuntRecruiters={handleHuntRecruiters}
           />
         );
-      case 'jobsense': return <JobSense />; // New Route
+      case 'jobsense': return <JobSense />;
       case 'apply': return <ApplicationBot selectedJob={selectedJob} />;
       case 'tracker': return <ApplicationHistory />;
       case 'outreach':
@@ -229,3 +231,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+    
