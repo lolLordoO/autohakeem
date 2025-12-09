@@ -233,8 +233,8 @@ export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportun
             - NEGATIVE CONSTRAINTS (CRITICAL): -Senior -Director -VP -Head -Principal -Lead -"5+ years" -"7+ years" -"10+ years"
             
             STRICT VALIDATION RULES:
-            1. MUST have a timestamp indicating "hours ago" or "1 day ago" or match date > ${dateStr}.
-            2. MUST be in UAE (Dubai/Abu Dhabi/Sharjah).
+            1. MUST be a specific, named company (e.g. "Careem").
+            2. DISCARD GENERIC NAMES: "Confidential", "Leading Company", "Client of", "Stealth", "Undisclosed".
             3. EXPERIENCE CAP: If listing says "5+ years", DISCARD IT. Must be 0-4 years fit.
             4. NO GHOST JOBS: If you can't find a specific snippet proving it's new, DO NOT include it.
             
@@ -257,24 +257,32 @@ export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportun
         const raw = cleanAndParseJSON(response.text || "[]");
         if (!Array.isArray(raw)) return [];
         
-        return raw.map((job: any) => ({
-            id: 'fresh-' + Math.random().toString(36).substr(2, 9),
-            title: job.title,
-            company: job.company,
-            location: job.location || "UAE",
-            source: job.source || "Fresh Drop",
-            url: isValidJobUrl(job.url) ? job.url : null,
-            search_query: `site:linkedin.com/jobs "${job.title}" "${job.company}"`,
-            description: `Freshly posted role (${job.postedDate}). Verified active listing.`,
-            salaryEstimate: job.salaryEstimate,
-            matchGrade: job.matchGrade || 'A',
-            matchReason: job.matchReason,
-            dateFound: new Date().toISOString(),
-            postedDate: job.postedDate,
-            isFresh: true,
-            status: 'found',
-            category: job.category || 'General'
-        }));
+        // Strict post-processing to remove fake names
+        const badNames = ['confidential', 'leading', 'hidden', 'undisclosed', 'stealth', 'client of', 'major', 'international', 'reputable'];
+        
+        return raw
+            .filter((job: any) => {
+                const name = job.company?.toLowerCase() || '';
+                return !badNames.some(b => name.includes(b));
+            })
+            .map((job: any) => ({
+                id: 'fresh-' + Math.random().toString(36).substr(2, 9),
+                title: job.title,
+                company: job.company,
+                location: job.location || "UAE",
+                source: job.source || "Fresh Drop",
+                url: isValidJobUrl(job.url) ? job.url : null,
+                search_query: `site:linkedin.com/jobs "${job.title}" "${job.company}"`,
+                description: `Freshly posted role (${job.postedDate}). Verified active listing.`,
+                salaryEstimate: job.salaryEstimate,
+                matchGrade: job.matchGrade || 'A',
+                matchReason: job.matchReason,
+                dateFound: new Date().toISOString(),
+                postedDate: job.postedDate,
+                isFresh: true,
+                status: 'found',
+                category: job.category || 'General'
+            }));
     }), 15);
 }
 
@@ -299,27 +307,28 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       const locationConstraint = filters?.emirate && filters.emirate !== 'All' ? `AND "${filters.emirate}"` : 'AND ("Dubai" OR "Abu Dhabi" OR "Sharjah")';
       // Strict level mapping based on 0-4 years constraint
       let levelConstraint = 'AND (Junior OR Associate OR Specialist OR "Entry Level" OR "Mid-Level") -Senior -Director -VP -Principal -"5+ years" -"7+ years"';
-      if (filters?.level === 'Lead/Manager') levelConstraint = 'AND (Manager OR Lead) -"Senior Manager" -"Director" -"VP"'; // Relax slightly for explicit Manager search but keep it mid-level
+      if (filters?.level === 'Lead/Manager') levelConstraint = 'AND (Manager OR Lead) -"Senior Manager" -"Director" -"VP"'; 
       
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Act as a Headhunter. Find 20 LIVE job listings in the UAE.
+        contents: `Act as a Forensic Headhunter. Find 20 LIVE job listings in the UAE.
         
         SEARCH QUERY: "${query} ${focusKeywords}"
         CONSTRAINTS: 
         - Posted AFTER: ${dateString}
         - Location: ${locationConstraint}
         - Level: ${levelConstraint} (Strictly 0-4 Years Experience Cap)
-        - Exclude: Ghost jobs, generic aggregators. Use 'site:linkedin.com/jobs' OR 'site:naukrigulf.com' OR 'site:indeed.com' where possible.
+        - Sources: 'site:linkedin.com/jobs' OR 'site:naukrigulf.com' OR 'site:indeed.com' OR 'site:bayt.com'.
         
         CANDIDATE: ${ABDUL_CV_TEXT.substring(0, 500)}
         
         ${UAE_SALARY_BENCHMARKS}
         
-        DATA INTEGRITY:
-        - ZERO HALLUCINATIONS: If no deep link, return null.
-        - SALARY LOGIC: Estimate using the benchmark matrix if hidden.
-        - VERIFY: Filter out duplicates and "Ghost Jobs".
+        DATA INTEGRITY RULES:
+        1. REAL COMPANIES ONLY: Discard "Confidential", "Leading Firm", "Client of...".
+        2. EXACT NAME: Extract company name exactly as it appears in the snippet.
+        3. ZERO HALLUCINATIONS: If no deep link, return null.
+        4. SALARY LOGIC: Estimate using the benchmark matrix if hidden.
         
         JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "description", "salaryEstimate": "e.g. AED 12k-15k", "matchGrade": "S"|"A"|"B"|"C", "matchReason": "Short reason" }]`,
         config: { tools: [{ googleSearch: {} }] }
@@ -329,11 +338,18 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       if (!Array.isArray(rawJobs)) return [];
 
       const seen = new Set<string>();
+      const badNames = ['confidential', 'leading', 'hidden', 'undisclosed', 'stealth', 'client of', 'major', 'international', 'reputable', 'various', 'tech company'];
+
       const uniqueJobs = rawJobs.filter((job: any) => {
           const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
           if (seen.has(key)) return false;
           if (!job.title || job.title.toLowerCase().includes('not found')) return false;
           if (!job.company) return false;
+          
+          // Strict Name Filter
+          const name = job.company.toLowerCase();
+          if (badNames.some(b => name.includes(b))) return false;
+          
           seen.add(key);
           return true;
       });
@@ -360,17 +376,17 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
 
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     // Cache for 4 hours
-    return smartCache(`market_signals_7days`, () => retryWrapper(async () => {
+    return smartCache(`market_signals_30days`, () => retryWrapper(async () => {
         const ai = getClient();
         
-        // Calculate date 7 days ago (STRICT)
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const dateStr = sevenDaysAgo.toISOString().split('T')[0];
+        // Calculate date 30 days ago (Relaxed)
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - 30);
+        const dateStr = daysAgo.toISOString().split('T')[0];
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (LAST 7 DAYS ONLY) for Hiring Signals.
+            contents: `Deep search UAE Business News (LAST 30 DAYS ONLY) for Hiring Signals.
             Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
             Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
             Look for: Funding Rounds, New Office Openings, Product Launches, Contract Wins, Executive Hires, Stealth Startups.
@@ -387,20 +403,20 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
 };
 
 export const findTechEvents = async (): Promise<TechEvent[]> => {
-    return smartCache(`tech_events_next7days`, () => retryWrapper(async () => {
+    return smartCache(`tech_events_next30days`, () => retryWrapper(async () => {
         const ai = getClient();
         
-        // Calculate next 7 days window (STRICT)
+        // Calculate next 30 days window (Broad)
         const today = new Date();
-        const nextWeek = new Date();
-        nextWeek.setDate(today.getDate() + 7);
-        const windowStr = `${today.toLocaleDateString()} to ${nextWeek.toLocaleDateString()}`;
+        const nextWindow = new Date();
+        nextWindow.setDate(today.getDate() + 30);
+        const windowStr = `${today.toLocaleDateString()} to ${nextWindow.toLocaleDateString()}`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah happening in the NEXT 7 DAYS.
+            contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah happening in the NEXT 30 DAYS.
             Current Date: ${today.toLocaleDateString()}.
-            Target Window: ${windowStr} ONLY.
+            Target Window: ${windowStr}.
             
             Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs.
             Constraint: Physical events in UAE only.
@@ -533,13 +549,15 @@ export const findAgencies = async (focus: SearchFocus, excludedNames: string[] =
         const focusKeywords = getFocusKeywords(focus);
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 15 UAE Recruitment Agencies specializing in: ${focus}. 
+            contents: `Find 15 ACTIVE UAE Recruitment Agencies specializing in: ${focus}. 
             Keywords to match: ${focusKeywords}.
             Exclude: ${excludedNames.join(',')}.
-            Sources: LinkedIn, Google Maps, Agency Directories.
+            
+            TASK: Scan agency websites/LinkedIn for ACTIVE job listings matching this focus.
+            
             Constraint: Physical presence in Dubai/Abu Dhabi.
             CRITICAL: OUTPUT STRICT JSON ARRAY ONLY.
-            JSON Output: [{ "name", "focus", "email", "phone", "website", "location", "activeRoles": [] }]`,
+            JSON Output: [{ "name", "focus", "email", "phone", "website", "location", "activeRoles": ["Role1", "Role2"] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         return cleanAndParseJSON(response.text || "[]");
