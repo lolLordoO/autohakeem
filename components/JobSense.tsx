@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Microscope, Search, AlertTriangle, CheckCircle, TrendingUp, DollarSign, BrainCircuit, Loader2, Link as LinkIcon, Briefcase, FileText, Building2, UserCircle, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Microscope, Search, AlertTriangle, CheckCircle, TrendingUp, DollarSign, BrainCircuit, Loader2, Link as LinkIcon, Briefcase, FileText, Building2, UserCircle, ShieldCheck, ShieldAlert, Fingerprint } from 'lucide-react';
 import { analyzeJobSense } from '../services/geminiService';
 import { JobSenseAnalysis, PersonaType } from '../types';
 
@@ -36,9 +36,9 @@ const JobSense: React.FC = () => {
         <div className="p-8 h-screen flex flex-col bg-dark-bg">
             <div className="mb-6 shrink-0">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                    <Microscope className="text-cyan-400"/> Job Sense
+                    <Microscope className="text-cyan-400"/> Job Sense Forensic Lab
                 </h2>
-                <p className="text-slate-400 text-sm mt-1">Forensic Job Analysis & Persona Fit Check</p>
+                <p className="text-slate-400 text-sm mt-1">Deep analysis & Persona Fit Check (Strictly 0-4 Years Experience Cap)</p>
             </div>
 
             {/* Input Section */}

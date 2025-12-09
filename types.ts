@@ -1,3 +1,4 @@
+
 export enum PersonaType {
   MARKETING = 'Marketing & Content',
   PMO = 'Project Management',
@@ -18,6 +19,8 @@ export enum SearchFocus {
   ECOMMERCE = 'E-commerce & Retail',
   CONSTRUCTION = 'Construction & Eng.'
 }
+
+export type JobCategory = 'Tech' | 'Creative' | 'Product' | 'General';
 
 export interface UserProfile {
   name: string;
@@ -56,6 +59,7 @@ export interface JobOpportunity {
   matchGrade?: MatchGrade; // New AI Verdict
   matchReason?: string; // "Why" this job was shown
   isFresh?: boolean; // If found in the 24h drop
+  category?: JobCategory;
 }
 
 export interface RecruiterProfile {

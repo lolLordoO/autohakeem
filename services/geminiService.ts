@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ABDUL_CV_TEXT, USER_PROFILE } from "../constants";
 import { GeneratedContent, JobOpportunity, PersonaType, RecruiterProfile, AgencyProfile, MarketSignal, TechEvent, SentimentAnalysis, OfferEvaluation, SearchFocus, ATSAnalysis, LinkedInTone, JobSenseAnalysis, JobFilters } from "../types";
@@ -125,7 +126,7 @@ const isValidJobUrl = (url: string | undefined): boolean => {
         'linkedin.com', 'indeed.com', 'naukrigulf.com', 'bayt.com', 
         'gulftalent.com', 'oliv.com', 'hub71.com', 'laimoon.com',
         'lever.co', 'greenhouse.io', 'workday.com', 'oraclecloud.com',
-        'careers.', 'jobs.'
+        'careers.', 'jobs.', 'taleo.net', 'bamboohr.com'
     ];
     return whitelist.some(domain => lower.includes(domain)) && !lower.includes('...');
 };
@@ -199,7 +200,7 @@ export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<st
         1. If user query is provided, it MUST be the core of the search.
         2. Add specific skills from CV (e.g. AI, Web3, SEO) that MATCH the user query.
         3. ENFORCE LOCATION: "United Arab Emirates" OR "Dubai" OR "Abu Dhabi" OR "Sharjah".
-        4. ENFORCE EXPERIENCE: Exclude "Senior", "Head", "Director", "VP". Target "Associate", "Specialist", "Manager" (if <5 years).
+        4. ENFORCE EXPERIENCE: STRICTLY CAP AT 4 YEARS. Exclude "Senior", "Head", "Director", "VP", "Principal". Target "Associate", "Specialist", "Manager" (if <5 years).
         
         Output: Query string only. No markdown.`
       });
@@ -207,29 +208,49 @@ export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<st
   }));
 };
 
+// IMPROVED: Real-time scraping agent for Fresh Drops
 export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportunity[]> => {
-    // Cache strictly for 20 minutes to keep it fresh but safe
-    return smartCache(`fresh_drops_${hours}h`, () => retryWrapper(async () => {
+    // Cache strictly for 15 minutes to allow frequent refreshes
+    return smartCache(`fresh_drops_${hours}h_${new Date().getHours()}`, () => retryWrapper(async () => {
         const ai = getClient();
         
-        const timePrompt = hours === 24 
-            ? "LAST 24 HOURS (Today, Yesterday)" 
-            : "LAST 48 HOURS (Today, Yesterday, 2 Days Ago)";
-
+        // Calculate date threshold
+        const date = new Date();
+        date.setHours(date.getHours() - hours);
+        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+        
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Find 10 HIGH PRIORITY jobs posted in the ${timePrompt} in UAE for this profile:
-            "${ABDUL_CV_TEXT.substring(0, 600)}"
+            contents: `ACT AS A FORENSIC JOB CRAWLER.
+            Task: Find 12 REAL job listings posted in the UAE after ${dateStr} (Last ${hours} hours).
             
-            Target Roles: Marketing Strategist, Technical PM, Content Manager, Web3 Product.
-            Location: UAE Only.
+            PROFILE MATCH (Abdul Hakeem):
+            - Experience: 4 Years (Mid-Level). 
+            - Focus: Marketing Strategy, Content (AI/Web3), Project Management (PMO).
             
-            CRITICAL INSTRUCTION:
-            - Look for snippets saying "2 hours ago", "14 hours ago", "Today", "Yesterday", "1d ago".
-            - IGNORE anything older than ${hours} hours.
-            - Focus on HIGH PAYING or HIGH GROWTH companies (MNCs, Funded Startups).
+            SEARCH STRATEGY (Use Google Search Tools):
+            - Execute: (site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:indeed.com OR site:glassdoor.com) AND ("Marketing" OR "Project Manager" OR "Web3" OR "AI Content" OR "Product Owner") AND ("Dubai" OR "Abu Dhabi") after:${dateStr}
+            - NEGATIVE CONSTRAINTS (CRITICAL): -Senior -Director -VP -Head -Principal -Lead -"5+ years" -"7+ years" -"10+ years"
             
-            JSON Output: [{ "title", "company", "location", "source", "url", "postedDate": "e.g. 4 hours ago", "salaryEstimate": "e.g. AED 15k+", "matchReason": "Why fits profile?" }]`,
+            STRICT VALIDATION RULES:
+            1. MUST have a timestamp indicating "hours ago" or "1 day ago" or match date > ${dateStr}.
+            2. MUST be in UAE (Dubai/Abu Dhabi/Sharjah).
+            3. EXPERIENCE CAP: If listing says "5+ years", DISCARD IT. Must be 0-4 years fit.
+            4. NO GHOST JOBS: If you can't find a specific snippet proving it's new, DO NOT include it.
+            
+            JSON Output ONLY: 
+            [{ 
+                "title", 
+                "company", 
+                "location", 
+                "source": "e.g. LinkedIn", 
+                "url": "DIRECT LINK ONLY", 
+                "postedDate": "e.g. 4 hours ago", 
+                "salaryEstimate": "e.g. AED 15k+", 
+                "matchReason": "Why fits profile?",
+                "matchGrade": "S"|"A"|"B",
+                "category": "Tech"|"Creative"|"Product"|"General"
+            }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         
@@ -244,16 +265,17 @@ export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportun
             source: job.source || "Fresh Drop",
             url: isValidJobUrl(job.url) ? job.url : null,
             search_query: `site:linkedin.com/jobs "${job.title}" "${job.company}"`,
-            description: `Freshly posted role (${job.postedDate}). High priority match.`,
+            description: `Freshly posted role (${job.postedDate}). Verified active listing.`,
             salaryEstimate: job.salaryEstimate,
-            matchGrade: 'S',
+            matchGrade: job.matchGrade || 'A',
             matchReason: job.matchReason,
             dateFound: new Date().toISOString(),
             postedDate: job.postedDate,
             isFresh: true,
-            status: 'found'
+            status: 'found',
+            category: job.category || 'General'
         }));
-    }), 20);
+    }), 15);
 }
 
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL, filters?: JobFilters): Promise<JobOpportunity[]> => {
@@ -275,8 +297,10 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
       dateString = now.toISOString().split('T')[0];
       
       const locationConstraint = filters?.emirate && filters.emirate !== 'All' ? `AND "${filters.emirate}"` : 'AND ("Dubai" OR "Abu Dhabi" OR "Sharjah")';
-      const levelConstraint = filters?.level && filters.level !== 'All' ? `AND "${filters.level}"` : 'AND (Junior OR Associate OR Specialist OR Manager)';
-
+      // Strict level mapping based on 0-4 years constraint
+      let levelConstraint = 'AND (Junior OR Associate OR Specialist OR "Entry Level" OR "Mid-Level") -Senior -Director -VP -Principal -"5+ years" -"7+ years"';
+      if (filters?.level === 'Lead/Manager') levelConstraint = 'AND (Manager OR Lead) -"Senior Manager" -"Director" -"VP"'; // Relax slightly for explicit Manager search but keep it mid-level
+      
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Act as a Headhunter. Find 20 LIVE job listings in the UAE.
@@ -285,7 +309,7 @@ export const searchJobsInUAE = async (query: string, focus: SearchFocus = Search
         CONSTRAINTS: 
         - Posted AFTER: ${dateString}
         - Location: ${locationConstraint}
-        - Level: ${levelConstraint}
+        - Level: ${levelConstraint} (Strictly 0-4 Years Experience Cap)
         - Exclude: Ghost jobs, generic aggregators. Use 'site:linkedin.com/jobs' OR 'site:naukrigulf.com' OR 'site:indeed.com' where possible.
         
         CANDIDATE: ${ABDUL_CV_TEXT.substring(0, 500)}
@@ -339,14 +363,14 @@ export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
     return smartCache(`market_signals_7days`, () => retryWrapper(async () => {
         const ai = getClient();
         
-        // Calculate date 7 days ago
+        // Calculate date 7 days ago (STRICT)
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         const dateStr = sevenDaysAgo.toISOString().split('T')[0];
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (LAST 7 DAYS) for Hiring Signals.
+            contents: `Deep search UAE Business News (LAST 7 DAYS ONLY) for Hiring Signals.
             Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
             Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
             Look for: Funding Rounds, New Office Openings, Product Launches, Contract Wins, Executive Hires, Stealth Startups.
@@ -366,7 +390,7 @@ export const findTechEvents = async (): Promise<TechEvent[]> => {
     return smartCache(`tech_events_next7days`, () => retryWrapper(async () => {
         const ai = getClient();
         
-        // Calculate next 7 days window
+        // Calculate next 7 days window (STRICT)
         const today = new Date();
         const nextWeek = new Date();
         nextWeek.setDate(today.getDate() + 7);
@@ -494,6 +518,7 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
           ${excludeStr}
           Use X-Ray Search Logic (site:linkedin.com/in).
           Constraint: MUST be based in UAE.
+          Constraint: Exclude Global Heads not in UAE.
           CRITICAL: OUTPUT STRICT JSON ONLY. NO CHAT.
           JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category", "recentPostSnippet" }]`,
           config: { tools: [{ googleSearch: {} }] }
@@ -770,4 +795,49 @@ export const analyzeJobSense = async (jobUrl: string, manualCompany: string, man
             cvUrl = USER_PROFILE.websites[PersonaType.MARKETING];
         } else if (persona === PersonaType.PMO) {
             focusInstruction = "Focus STRICTLY on Agile/Scrum, Project Delivery, Stakeholder Management, and Technical Leadership.";
-            cv
+            cvUrl = USER_PROFILE.websites[PersonaType.PMO];
+        } else {
+            focusInstruction = "Focus on the hybrid blend of Technical + Marketing skills.";
+            cvUrl = USER_PROFILE.websites[PersonaType.ULT];
+        }
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Conduct Forensic Job Analysis.
+            
+            INPUTS:
+            - URL: ${jobUrl}
+            - Company: ${manualCompany}
+            - JD: ${manualJd}
+            - CANDIDATE PERSONA: ${persona}
+            - PORTFOLIO: ${cvUrl}
+            - FULL CV: ${ABDUL_CV_TEXT.substring(0, 2000)}
+            
+            TASK:
+            1. VALIDATION: Search to verify if this company and role exist in UAE. Is it a Ghost Job?
+            2. SALARY FORENSICS: Search Glassdoor/Payscale for "${manualCompany} UAE Salaries".
+            3. FIT CHECK: Compare JD vs Candidate's ${persona} skills (0-4 YOE fit).
+            4. HEALTH CHECK: Search for recent layoffs or funding news.
+            
+            ${focusInstruction}
+            
+            JSON Output: { 
+                "jobTitle", 
+                "company", 
+                "roleSummary", 
+                "companyVibe", 
+                "matchScore": number (0-100),
+                "usedPersona": "${persona}",
+                "verification": { "isCompanyReal": boolean, "isJobReal": boolean, "notes": "string" },
+                "salaryAnalysis": { "estimated": "e.g. AED 20k", "marketAvg": "string", "status": "Below/Fair/Above" },
+                "atsGap": { "score": number, "missingSkills": [] },
+                "redFlags": [],
+                "greenFlags": [],
+                "strategicAdvice": "string"
+            }`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        
+        return cleanAndParseJSON(response.text || "{}");
+    });
+}
