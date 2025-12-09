@@ -84,4 +84,3 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, toggleProfil
 };
 
 export default Sidebar;
-    
