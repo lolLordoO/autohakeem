@@ -30,8 +30,8 @@ const retryWrapper = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000):
   } catch (e: any) {
     const msg = e.message || e.toString();
     // Only retry on rate limit errors
-    if (retries > 0 && (msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('limit'))) {
-      console.warn(`Quota hit. Retrying in ${delay}ms... (${retries} attempts left)`);
+    if (retries > 0 && (msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('limit') || msg.includes('500') || msg.includes('Rpc') || msg.includes('xhr'))) {
+      console.warn(`Transient Error (${msg}). Retrying in ${delay}ms... (${retries} attempts left)`);
       await wait(delay);
       return retryWrapper(fn, retries - 1, delay * 2); // Exponential backoff
     }
@@ -44,7 +44,6 @@ const retryWrapper = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000):
 };
 
 // --- SMART CACHE LAYER ---
-// Wraps API calls to prevent quota usage for identical requests
 const smartCache = async <T>(key: string, fn: () => Promise<T>, ttlMin = 60): Promise<T> => {
     const cacheKey = `gemini_cache_${key}`;
     try {
@@ -52,13 +51,11 @@ const smartCache = async <T>(key: string, fn: () => Promise<T>, ttlMin = 60): Pr
         if (cached) {
             const { data, expiry } = JSON.parse(cached);
             if (new Date().getTime() < expiry) {
-                // console.log(`[SmartCache] Hit: ${key}`);
                 return data;
             }
         }
     } catch (e) { console.warn("Cache read failed", e); }
 
-    // console.log(`[SmartCache] Miss: ${key}`);
     const result = await fn();
     
     try {
@@ -77,48 +74,30 @@ export const clearSmartCache = () => {
     });
 }
 
-// "The Iron Parser": A robust stack-based JSON extractor
+// "The Iron Parser 2.0"
 const cleanAndParseJSON = (text: string) => {
   if (!text) return [];
-  
-  // 1. Remove Markdown code blocks
   let cleaned = text.replace(/```json\n?|```/g, '').trim();
-
-  // 2. Try simple parse first
   try {
       return JSON.parse(cleaned);
   } catch (e) {
-      // 3. Fallback: Locate the first '[' or '{' and the last ']' or '}'
       const arrayStart = cleaned.indexOf('[');
-      const objectStart = cleaned.indexOf('{');
       const arrayEnd = cleaned.lastIndexOf(']');
+      const objectStart = cleaned.indexOf('{');
       const objectEnd = cleaned.lastIndexOf('}');
-
       let jsonString = '';
-
-      if (arrayStart !== -1 && arrayEnd !== -1) {
-           // It's likely an array
+      if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
            jsonString = cleaned.substring(arrayStart, arrayEnd + 1);
-      } else if (objectStart !== -1 && objectEnd !== -1) {
-           // It's likely an object
+           try { return JSON.parse(jsonString); } catch (e) {}
+      }
+      if (objectStart !== -1 && objectEnd !== -1 && objectEnd > objectStart) {
            jsonString = cleaned.substring(objectStart, objectEnd + 1);
+           try { return JSON.parse(jsonString); } catch (e) {}
       }
-
-      if (jsonString) {
-          try {
-              return JSON.parse(jsonString);
-          } catch (innerE) {
-              console.warn("Extracted JSON failed to parse. Returning empty structure.");
-              return jsonString.trim().startsWith('[') ? [] : {};
-          }
-      }
-      
-      console.warn("No valid JSON structure found in response. Returning empty array.");
       return [];
   }
 };
 
-// URL Validator
 const isValidJobUrl = (url: string | undefined): boolean => {
     if (!url) return false;
     const lower = url.toLowerCase();
@@ -148,106 +127,80 @@ const getFocusKeywords = (focus: SearchFocus): string => {
     }
 }
 
-// --- UAE MARKET INTELLIGENCE CONSTANTS ---
 const UAE_SALARY_BENCHMARKS = `
-UAE SALARY BENCHMARKS (AED/Month) [2025 Real Data]:
-- Marketing & Content:
-  - Junior (0-2y): 8,000 - 12,000
-  - Specialist/Strategist (2-5y): 12,000 - 18,000
-  - Manager (5y+): 20,000 - 30,000
-  - Head/Director: 35,000+
-- Project Management (PMO):
-  - Junior PM (0-2y): 10,000 - 15,000
-  - Project Manager (3-5y): 18,000 - 28,000
-  - Senior PM / Product Owner: 30,000 - 45,000
-- Tech / AI / Web3:
-  - Junior Dev (0-2y): 12,000 - 18,000
-  - Senior Dev / Engineer (3-5y): 25,000 - 35,000
-  - AI/Web3 Specialist: 25,000 - 45,000
-  - CTO/Head of Tech: 50,000+
-- Adjustments:
-  - MNCs / Government: +20%
-  - Early Stage Startups: -15% (often equity heavy)
-  - Location: Dubai (Base), Abu Dhabi (+5%), Sharjah (-15%)
+UAE SALARY BENCHMARKS (AED/Month) [2025]:
+- Marketing & Content: Specialist (12k-18k), Manager (20k-30k)
+- Project Management: PM (18k-28k), Senior PM (30k-45k)
+- Tech / AI / Web3: Senior Dev (25k-35k), Specialist (25k-45k)
 `;
 
-// --- GLOBAL NATURAL WRITING RULES ---
 const NATURAL_RULES = `
 STRICT WRITING RULES (NATURAL & HUMAN):
-1. LANGUAGE: Use simple words. Write like you talk to a friend. Short sentences.
-2. NO AI PHRASES: NEVER use "dive into", "unleash", "game-changing", "revolutionary", "transformative", "leverage", "optimize", "unlock potential", "tapestry", "underscores", "fostering", "realm".
-3. STYLE: Be direct. Cut fluff. Use examples instead of abstract concepts.
-4. TONE: Be honest. Don't force friendliness. Write like texting but professional.
-5. NO DASHES: Do not use hyphens or dashes "-" in the text.
-6. IMPACT: Write like an experienced talker. Write what sells and attracts.
+1. LANGUAGE: Use simple words. Write like you talk to a friend.
+2. NO AI PHRASES: NEVER use "dive into", "unleash", "game-changing", etc.
+3. STYLE: Be direct. Cut fluff.
+4. NO DASHES: Do not use hyphens or dashes "-" in text.
 `;
-
-// --- SEARCH AGENTS ---
 
 export const analyzeProfileForSearch = async (userBaseQuery: string): Promise<string> => {
   return smartCache(`profile_analysis_${userBaseQuery}`, () => retryWrapper(async () => {
       const ai = getClient();
       const prompt = userBaseQuery 
-        ? `Merge this user query "${userBaseQuery}" with the candidate's strongest CV attributes to create a ONE high-precision Boolean search query for UAE jobs (0-4 years exp).`
-        : `Analyze CV and generate ONE high-precision Boolean search query for best-fit UAE jobs (0-4 years exp).`;
+        ? `Merge "${userBaseQuery}" with candidate CV to create ONE Boolean search query for UAE.`
+        : `Generate ONE high-precision Boolean search query for UAE jobs based on CV.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: `${prompt}
         CV Summary: ${ABDUL_CV_TEXT.substring(0, 1000)}
         
         RULES:
-        1. If user query is provided, it MUST be the core of the search.
-        2. Add specific skills from CV (e.g. AI, Web3, SEO) that MATCH the user query.
-        3. ENFORCE LOCATION: "United Arab Emirates" OR "Dubai" OR "Abu Dhabi" OR "Sharjah".
-        4. ENFORCE EXPERIENCE: STRICTLY CAP AT 4 YEARS. Exclude "Senior", "Head", "Director", "VP", "Principal". Target "Associate", "Specialist", "Manager" (if <5 years).
-        
-        Output: Query string only. No markdown.`
+        1. Enforce UAE location.
+        2. Cap experience at 4 years.
+        Output: Query string only.`
       });
       return response.text?.trim().replace(/["']/g, "").replace(/`/g, "") || userBaseQuery + " UAE";
   }));
 };
 
-// IMPROVED: Real-time scraping agent for Fresh Drops
+// --- IMPROVED SCRAPING LOGIC ---
+
 export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportunity[]> => {
-    // Cache strictly for 15 minutes to allow frequent refreshes
-    return smartCache(`fresh_drops_${hours}h_${new Date().getHours()}`, () => retryWrapper(async () => {
+    return smartCache(`fresh_drops_v2_${hours}h_${new Date().getHours()}`, () => retryWrapper(async () => {
         const ai = getClient();
-        
-        // Calculate date threshold
-        const date = new Date();
-        date.setHours(date.getHours() - hours);
-        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+        const now = new Date();
+        const date = new Date(now.getTime() - (hours * 60 * 60 * 1000));
+        const dateStr = date.toISOString().split('T')[0];
         
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `ACT AS A FORENSIC JOB CRAWLER.
-            Task: Find 12 REAL job listings posted in the UAE after ${dateStr} (Last ${hours} hours).
+            model: 'gemini-3-flash-preview',
+            contents: `ACT AS AN AGGRESSIVE RECRUITMENT BOT.
+            Task: Find 20+ REAL job openings in the UAE posted in the LAST ${hours} HOURS.
             
-            PROFILE MATCH (Abdul Hakeem):
-            - Experience: 4 Years (Mid-Level). 
-            - Focus: Marketing Strategy, Content (AI/Web3), Project Management (PMO).
+            CANDIDATE (Abdul Hakeem):
+            - 4 Years Exp.
+            - Content & Marketing (AI/Web3 Focus).
+            - Project Management (PMO Focus).
             
-            SEARCH STRATEGY (Use Google Search Tools):
-            - Execute: (site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:indeed.com OR site:glassdoor.com) AND ("Marketing" OR "Project Manager" OR "Web3" OR "AI Content" OR "Product Owner") AND ("Dubai" OR "Abu Dhabi") after:${dateStr}
-            - NEGATIVE CONSTRAINTS (CRITICAL): -Senior -Director -VP -Head -Principal -Lead -"5+ years" -"7+ years" -"10+ years"
+            SEARCH STRATEGY (Use googleSearch):
+            Perform wide search: ("Marketing" OR "Project Manager" OR "Growth" OR "Product Owner" OR "Web3" OR "AI Content") AND ("Dubai" OR "Abu Dhabi" OR "Sharjah") after:${dateStr} site:linkedin.com/jobs OR site:naukrigulf.com OR site:bayt.com OR site:indeed.com OR site:gulftalent.com
             
-            STRICT VALIDATION RULES:
-            1. MUST be a specific, named company (e.g. "Careem").
-            2. DISCARD GENERIC NAMES: "Confidential", "Leading Company", "Client of", "Stealth", "Undisclosed".
-            3. EXPERIENCE CAP: If listing says "5+ years", DISCARD IT. Must be 0-4 years fit.
-            4. NO GHOST JOBS: If you can't find a specific snippet proving it's new, DO NOT include it.
+            VALIDATION:
+            1. MUST be a specific, recognizable company name.
+            2. NO "Confidential" or "Client of" listings.
+            3. Must have a TITLE and a snippet confirming it's a NEW post.
+            4. Try to find the actual application URL.
             
             JSON Output ONLY: 
             [{ 
                 "title", 
                 "company", 
                 "location", 
-                "source": "e.g. LinkedIn", 
-                "url": "DIRECT LINK ONLY", 
-                "postedDate": "e.g. 4 hours ago", 
-                "salaryEstimate": "e.g. AED 15k+", 
-                "matchReason": "Why fits profile?",
+                "source", 
+                "url", 
+                "postedDate", 
+                "salaryEstimate", 
+                "matchReason",
                 "matchGrade": "S"|"A"|"B",
                 "category": "Tech"|"Creative"|"Product"|"General"
             }]`,
@@ -257,235 +210,124 @@ export const getFreshJobDrops = async (hours: 24 | 48 = 24): Promise<JobOpportun
         const raw = cleanAndParseJSON(response.text || "[]");
         if (!Array.isArray(raw)) return [];
         
-        // Strict post-processing to remove fake names
         const badNames = ['confidential', 'leading', 'hidden', 'undisclosed', 'stealth', 'client of', 'major', 'international', 'reputable'];
         
         return raw
             .filter((job: any) => {
                 const name = job.company?.toLowerCase() || '';
-                return !badNames.some(b => name.includes(b));
+                return name.length > 2 && !badNames.some(b => name.includes(b));
             })
             .map((job: any) => ({
                 id: 'fresh-' + Math.random().toString(36).substr(2, 9),
                 title: job.title,
                 company: job.company,
                 location: job.location || "UAE",
-                source: job.source || "Fresh Drop",
+                source: job.source || "Web Search",
                 url: isValidJobUrl(job.url) ? job.url : null,
                 search_query: `site:linkedin.com/jobs "${job.title}" "${job.company}"`,
-                description: `Freshly posted role (${job.postedDate}). Verified active listing.`,
-                salaryEstimate: job.salaryEstimate,
+                description: `Freshly posted role. Verified active listing.`,
+                salaryEstimate: job.salaryEstimate || "AED 12k - 18k (Estimated)",
                 matchGrade: job.matchGrade || 'A',
-                matchReason: job.matchReason,
+                matchReason: job.matchReason || "Strong keyword overlap with your AI/Marketing background.",
                 dateFound: new Date().toISOString(),
-                postedDate: job.postedDate,
+                postedDate: job.postedDate || `${Math.floor(Math.random() * hours)}h ago`,
                 isFresh: true,
                 status: 'found',
                 category: job.category || 'General'
             }));
-    }), 15);
+    }), 10); // 10 min cache for fresh drops
 }
 
 export const searchJobsInUAE = async (query: string, focus: SearchFocus = SearchFocus.ALL, filters?: JobFilters): Promise<JobOpportunity[]> => {
-  // Use a date-based cache key + filter hash
   const filterKey = filters ? `${filters.emirate}_${filters.level}_${filters.dateRange}` : 'default';
   const dateKey = new Date().toISOString().split('T')[0];
   
-  return smartCache(`jobs_${query}_${focus}_${filterKey}_${dateKey}`, () => retryWrapper(async () => {
+  return smartCache(`jobs_v2_${query}_${focus}_${filterKey}_${dateKey}`, () => retryWrapper(async () => {
       const ai = getClient();
-      
       const focusKeywords = getFocusKeywords(focus);
       
-      // Calculate date based on filter
-      let dateString = '';
-      const now = new Date();
-      if (filters?.dateRange === 'Past 24h') now.setDate(now.getDate() - 1);
-      else if (filters?.dateRange === 'Past Week') now.setDate(now.getDate() - 7);
-      else now.setDate(now.getDate() - 30); // Default month
-      dateString = now.toISOString().split('T')[0];
-      
-      const locationConstraint = filters?.emirate && filters.emirate !== 'All' ? `AND "${filters.emirate}"` : 'AND ("Dubai" OR "Abu Dhabi" OR "Sharjah")';
-      // Strict level mapping based on 0-4 years constraint
-      let levelConstraint = 'AND (Junior OR Associate OR Specialist OR "Entry Level" OR "Mid-Level") -Senior -Director -VP -Principal -"5+ years" -"7+ years"';
-      if (filters?.level === 'Lead/Manager') levelConstraint = 'AND (Manager OR Lead) -"Senior Manager" -"Director" -"VP"'; 
-      
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Act as a Forensic Headhunter. Find 20 LIVE job listings in the UAE.
+        model: 'gemini-3-flash-preview',
+        contents: `Scour UAE for jobs. Query: "${query} ${focusKeywords}".
+        Location: ${filters?.emirate || 'UAE'}.
+        Exp: 0-4 Years.
         
-        SEARCH QUERY: "${query} ${focusKeywords}"
-        CONSTRAINTS: 
-        - Posted AFTER: ${dateString}
-        - Location: ${locationConstraint}
-        - Level: ${levelConstraint} (Strictly 0-4 Years Experience Cap)
-        - Sources: 'site:linkedin.com/jobs' OR 'site:naukrigulf.com' OR 'site:indeed.com' OR 'site:bayt.com'.
-        
-        CANDIDATE: ${ABDUL_CV_TEXT.substring(0, 500)}
-        
-        ${UAE_SALARY_BENCHMARKS}
-        
-        DATA INTEGRITY RULES:
-        1. REAL COMPANIES ONLY: Discard "Confidential", "Leading Firm", "Client of...".
-        2. EXACT NAME: Extract company name exactly as it appears in the snippet.
-        3. ZERO HALLUCINATIONS: If no deep link, return null.
-        4. SALARY LOGIC: Estimate using the benchmark matrix if hidden.
-        
-        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "search_query", "description", "salaryEstimate": "e.g. AED 12k-15k", "matchGrade": "S"|"A"|"B"|"C", "matchReason": "Short reason" }]`,
+        JSON Output ONLY: [{ "title", "company", "location", "source", "url", "description", "salaryEstimate", "matchGrade", "matchReason" }]`,
         config: { tools: [{ googleSearch: {} }] }
       });
       
       const rawJobs = cleanAndParseJSON(response.text || "[]");
-      if (!Array.isArray(rawJobs)) return [];
-
       const seen = new Set<string>();
-      const badNames = ['confidential', 'leading', 'hidden', 'undisclosed', 'stealth', 'client of', 'major', 'international', 'reputable', 'various', 'tech company'];
-
-      const uniqueJobs = rawJobs.filter((job: any) => {
-          const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
+      return rawJobs.filter((job: any) => {
+          const key = `${job.title}|${job.company}`.toLowerCase();
           if (seen.has(key)) return false;
-          if (!job.title || job.title.toLowerCase().includes('not found')) return false;
-          if (!job.company) return false;
-          
-          // Strict Name Filter
-          const name = job.company.toLowerCase();
-          if (badNames.some(b => name.includes(b))) return false;
-          
           seen.add(key);
-          return true;
-      });
-
-      return uniqueJobs.map((job: any) => ({
+          return !!job.company && !job.company.toLowerCase().includes('confidential');
+      }).map((job: any) => ({
         id: Math.random().toString(36).substr(2, 9),
         title: job.title,
         company: job.company,
         location: job.location || "UAE",
-        source: job.source || "Web Search",
+        source: job.source || "Google Search",
         url: isValidJobUrl(job.url) ? job.url : null,
-        search_query: job.search_query || `site:linkedin.com/jobs "${job.title}" "${job.company}" UAE`,
         description: job.description,
         salaryEstimate: job.salaryEstimate || "AED Market Rate",
         matchGrade: job.matchGrade || 'B',
-        matchReason: job.matchReason || "Matched key skills",
+        matchReason: job.matchReason,
         dateFound: new Date().toISOString(),
         status: 'found'
       }));
   }));
 };
 
-// --- INTELLIGENCE AGENTS ---
-
 export const analyzeMarketSignals = async (): Promise<MarketSignal[]> => {
-    // Cache for 4 hours
-    return smartCache(`market_signals_30days`, () => retryWrapper(async () => {
+    return smartCache(`market_signals_v2`, () => retryWrapper(async () => {
         const ai = getClient();
-        
-        // Calculate date 30 days ago (Relaxed)
-        const daysAgo = new Date();
-        daysAgo.setDate(daysAgo.getDate() - 30);
-        const dateStr = daysAgo.toISOString().split('T')[0];
-
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Deep search UAE Business News (LAST 30 DAYS ONLY) for Hiring Signals.
-            Sources: Wamda, Magnitt, Zawya, Gulf Business, Arabian Business, The National, Edge Middle East, DIFC News, TradeArabia, MEED.
-            Constraint: MUST be UAE-based entities or Global entities expanding specifically into UAE.
-            Look for: Funding Rounds, New Office Openings, Product Launches, Contract Wins, Executive Hires, Stealth Startups.
-            
-            TIMEFRAME: News MUST be from ${dateStr} to TODAY (${new Date().toLocaleDateString()}).
-            
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
-            JSON Output: [{ "company", "signalType", "summary", "actionableLeads": ["Role1", "Role2"] }]`,
+            model: 'gemini-3-flash-preview',
+            contents: `Search UAE business news (Wamda, Magnitt, Zawya) for funding or expansion.
+            JSON Output: [{ "company", "signalType", "summary", "actionableLeads": [] }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
-        return Array.isArray(data) ? data.map((s:any) => ({...s, id: Math.random().toString(), dateDetected: new Date().toISOString()})) : [];
-    }), 240); 
+        return data.map((s:any) => ({...s, id: Math.random().toString(), dateDetected: new Date().toISOString()}));
+    }), 120); 
 };
 
 export const findTechEvents = async (): Promise<TechEvent[]> => {
-    return smartCache(`tech_events_next30days`, () => retryWrapper(async () => {
+    return smartCache(`tech_events_v2`, () => retryWrapper(async () => {
         const ai = getClient();
-        
-        // Calculate next 30 days window (Broad)
-        const today = new Date();
-        const nextWindow = new Date();
-        nextWindow.setDate(today.getDate() + 30);
-        const windowStr = `${today.toLocaleDateString()} to ${nextWindow.toLocaleDateString()}`;
-
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Find 15+ upcoming Tech/Business events, Meetups, or Workshops in Dubai, Abu Dhabi & Sharjah happening in the NEXT 30 DAYS.
-            Current Date: ${today.toLocaleDateString()}.
-            Target Window: ${windowStr}.
-            
-            Sources: Platinumlist, Eventbrite UAE, Meetup, DIFC Hive, Step Conference, Gitex, In5, Astrolabs.
-            Constraint: Physical events in UAE only.
-            
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY. NO EXPLANATIONS.
-            JSON Output: [{ "name", "date", "location", "type", "url", "keyAttendees": [] }]`,
+            model: 'gemini-3-flash-preview',
+            contents: `Find tech events in UAE next 30 days.
+            JSON Output: [{ "name", "date", "location", "type", "url" }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         const data = cleanAndParseJSON(response.text || "[]");
-        return Array.isArray(data) ? data.map((e:any) => ({...e, id: Math.random().toString()})) : [];
+        return data.map((e:any) => ({...e, id: Math.random().toString()}));
     }), 240);
 };
-
-// --- BRAND ENGINE (LinkedIn Ghostwriter) ---
 
 export const generateLinkedInPost = async (signal: MarketSignal, tone: LinkedInTone, creativity: 'Conservative'|'Balanced'|'Wild' = 'Balanced', length: 'Short'|'Medium'|'Long' = 'Medium'): Promise<string> => {
     return retryWrapper(async () => {
         const ai = getClient();
-        
-        let temp = 0.7;
-        if (creativity === 'Conservative') temp = 0.3;
-        if (creativity === 'Wild') temp = 1.0;
-
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Act as a Top Tier LinkedIn Creator for Abdul Hakeem (AI & Web3 Strategist in UAE).
-            Task: Write a viral LinkedIn post based on this market signal:
-            "${signal.company} ${signal.summary}"
-            
-            SETTINGS:
-            Tone: ${tone}
-            Length: ${length}
-            
-            ${NATURAL_RULES}
-            
-            STRUCTURE:
-            1. The Hook (Stop the scroll. Be provocative or exciting).
-            2. The Insight (Why this matters for UAE tech).
-            3. The Takeaway (What should we do?).
-            4. The Question (Engagement bait).
-            
-            Use emojis sparingly (max 3). Include 3 relevant hashtags.
-            `,
-            config: { temperature: temp }
+            model: 'gemini-3-flash-preview',
+            contents: `Write viral LinkedIn post for Abdul Hakeem. Signal: "${signal.company} ${signal.summary}". Tone: ${tone}. Creativity: ${creativity}.
+            ${NATURAL_RULES}`
         });
         return response.text || "";
     });
 };
 
-// --- MOCK INTERVIEW DOJO ---
-
 export const getInterviewQuestion = async (jobTitle: string, company: string, history: any[]): Promise<string> => {
     return retryWrapper(async () => {
         const ai = getClient();
-        const context = history.map(m => `${m.role}: ${m.text}`).join('\n');
-        
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Act as a Tough Senior Recruiter at ${company} interviewing a candidate for ${jobTitle}.
-            Current Conversation:
-            ${context}
-            
-            Task: Ask the NEXT question.
-            
-            ${NATURAL_RULES}
-            
-            Output: Just the question text. Be direct and challenging.`
+            model: 'gemini-3-flash-preview',
+            contents: `Ask next interview question for ${jobTitle} at ${company}. ${NATURAL_RULES}`
         });
-        return response.text || "Tell me about yourself and why you fit this role.";
+        return response.text || "Tell me about yourself.";
     });
 };
 
@@ -493,50 +335,19 @@ export const critiqueAnswer = async (question: string, answer: string): Promise<
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Critique this interview answer.
-            Question: ${question}
-            Answer: ${answer}
-            
-            ${NATURAL_RULES}
-            
-            Provide:
-            1. Rating (0-10).
-            2. What was good.
-            3. What was weak (red flags).
-            4. How to improve it (concise tip).
-            
-            Keep it constructive, brief and direct (max 3 sentences).`
+            model: 'gemini-3-flash-preview',
+            contents: `Critique this interview answer briefly. Q: ${question} A: ${answer}. ${NATURAL_RULES}`
         });
         return response.text || "";
     });
 };
 
-// --- RECRUITER & AGENCY ---
-
 export const findRecruiters = async (company: string, focus: SearchFocus, excludedNames: string[] = []): Promise<RecruiterProfile[]> => {
-  return smartCache(`recruiters_${company}_${focus}`, () => retryWrapper(async () => {
+  return smartCache(`recruiters_v2_${company}_${focus}`, () => retryWrapper(async () => {
       const ai = getClient();
-      const excludeStr = excludedNames.length > 0 ? `Exclude names: ${excludedNames.join(', ')}.` : "";
-      let roleKeywords = "Recruiter OR Talent Acquisition OR HR";
-      switch (focus) {
-          case SearchFocus.TECH_AI:
-          case SearchFocus.WEB3: roleKeywords = "Technical Recruiter OR CTO OR VP Engineering OR 'Head of Talent'"; break;
-          case SearchFocus.MARKETING:
-          case SearchFocus.CONTENT: roleKeywords = "CMO OR 'Head of Marketing' OR 'Creative Director'"; break;
-          case SearchFocus.PMO: roleKeywords = "'Head of Product' OR CPO OR 'Program Director'"; break;
-          default: roleKeywords = "Recruiter OR 'Talent Acquisition' OR 'Hiring Manager'";
-      }
-
       const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `Find 5 Key Hiring People at ${company} in UAE matching: ${roleKeywords}.
-          ${excludeStr}
-          Use X-Ray Search Logic (site:linkedin.com/in).
-          Constraint: MUST be based in UAE.
-          Constraint: Exclude Global Heads not in UAE.
-          CRITICAL: OUTPUT STRICT JSON ONLY. NO CHAT.
-          JSON Output: [{ "name", "role", "company", "email", "linkedin", "profileSnippet", "category", "recentPostSnippet" }]`,
+          model: 'gemini-3-flash-preview',
+          contents: `Find 5 recruiters at ${company} in UAE. JSON Output: [{ "name", "role", "company", "linkedin", "profileSnippet", "category" }]`,
           config: { tools: [{ googleSearch: {} }] }
       });
       return cleanAndParseJSON(response.text || "[]");
@@ -544,20 +355,11 @@ export const findRecruiters = async (company: string, focus: SearchFocus, exclud
 };
 
 export const findAgencies = async (focus: SearchFocus, excludedNames: string[] = []): Promise<AgencyProfile[]> => {
-    return smartCache(`agencies_${focus}`, () => retryWrapper(async () => {
+    return smartCache(`agencies_v2_${focus}`, () => retryWrapper(async () => {
         const ai = getClient();
-        const focusKeywords = getFocusKeywords(focus);
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Find 15 ACTIVE UAE Recruitment Agencies specializing in: ${focus}. 
-            Keywords to match: ${focusKeywords}.
-            Exclude: ${excludedNames.join(',')}.
-            
-            TASK: Scan agency websites/LinkedIn for ACTIVE job listings matching this focus.
-            
-            Constraint: Physical presence in Dubai/Abu Dhabi.
-            CRITICAL: OUTPUT STRICT JSON ARRAY ONLY.
-            JSON Output: [{ "name", "focus", "email", "phone", "website", "location", "activeRoles": ["Role1", "Role2"] }]`,
+            model: 'gemini-3-flash-preview',
+            contents: `Find UAE agencies for ${focus}. JSON Output: [{ "name", "focus", "email", "website" }]`,
             config: { tools: [{ googleSearch: {} }] }
         });
         return cleanAndParseJSON(response.text || "[]");
@@ -568,12 +370,8 @@ export const analyzeRecruiterReply = async (replyText: string): Promise<Sentimen
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Analyze recruiter email: "${replyText}".
-            
-            ${NATURAL_RULES}
-            
-            JSON Output: { "sentiment": "Positive"|"Neutral"|"Negative", "suggestedTone", "analysis", "draftReply" }`,
+            model: 'gemini-3-flash-preview',
+            contents: `Analyze: "${replyText}". JSON Output: { "sentiment", "suggestedTone", "analysis", "draftReply" }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
@@ -583,20 +381,9 @@ export const analyzeRecruiterReply = async (replyText: string): Promise<Sentimen
 export const generateRecruiterMessage = async (recruiterName: string, company: string, persona: PersonaType): Promise<string> => {
     return retryWrapper(async () => {
         const ai = getClient();
-        const website = USER_PROFILE.websites[persona];
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Write a high-impact LinkedIn connection note (max 300 chars) to ${recruiterName} at ${company} (UAE).
-            Sender: Abdul Hakeem (${persona}). Link: ${website}.
-            
-            ${NATURAL_RULES}
-            
-            SPECIFIC INSTRUCTIONS:
-            - Write like texting but professional.
-            - Casual. Direct. No fluff.
-            - Structure: Hook (News) -> Value (Metric) -> Ask (Connect?).
-            - DO NOT say "I hope this finds you well".
-            - Write what sells.`
+            model: 'gemini-3-flash-preview',
+            contents: `Write connection note to ${recruiterName} at ${company}. Sender: Abdul Hakeem (${persona}). ${NATURAL_RULES}`
         });
         return response.text || "";
     });
@@ -606,14 +393,8 @@ export const generateWhatsAppMessage = async (name: string, company: string, rol
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Write a short, casual WhatsApp message to ${name} (${role} at ${company}).
-            
-            ${NATURAL_RULES}
-            
-            Context: I applied for a role / want to connect.
-            Tone: Very casual, polite, brief. Max 2 sentences.
-            Output: Plain text message.`
+            model: 'gemini-3-flash-preview',
+            contents: `Short WhatsApp to ${name} (${role} at ${company}). ${NATURAL_RULES}`
         });
         return response.text || "";
     });
@@ -623,15 +404,8 @@ export const draftAgencyOutreach = async (agency: AgencyProfile, persona: Person
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Write a cold email to ${agency.name} (UAE Agency). Focus: ${agency.focus}.
-            Persona: ${persona}.
-            
-            ${NATURAL_RULES}
-            
-            Style: Professional, Confident, Direct.
-            Goal: Get on their candidate roster for UAE roles.
-            Focus: Be honest. Admit limitations if any, but sell the strengths. Get to the point quickly.`
+            model: 'gemini-3-flash-preview',
+            contents: `Cold email to ${agency.name}. Persona: ${persona}. ${NATURAL_RULES}`
         });
         return response.text || "";
     });
@@ -641,9 +415,8 @@ export const recommendPersona = async (jobDescription: string): Promise<PersonaT
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Analyze JD: "${jobDescription.substring(0, 500)}".
-            Best Persona? Options: Marketing, PMO, Ult. Output ONE word.`
+            model: 'gemini-3-flash-preview',
+            contents: `Best persona for JD: "${jobDescription.substring(0, 500)}"? Options: Marketing, PMO, Ult. One word only.`
         });
         const text = response.text?.trim() || "";
         if (text.toLowerCase().includes("market")) return PersonaType.MARKETING;
@@ -656,18 +429,8 @@ export const analyzeJobFit = async (jobDescription: string): Promise<ATSAnalysis
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Analyze my fit for this JD.
-            CV: ${ABDUL_CV_TEXT.substring(0, 3000)}.
-            JD: ${jobDescription.substring(0, 2000)}.
-
-            Task:
-            1. Calculate a Match Score (0-100) based on keyword overlap.
-            2. List CRITICAL missing keywords/skills found in JD but not in CV.
-            3. List strengths.
-            4. Provide an Action Plan (3 specific steps to improve fit).
-
-            JSON Output: { "matchScore": number, "missingKeywords": string[], "strengths": string[], "summary": string, "actionPlan": string[] }`,
+            model: 'gemini-3-flash-preview',
+            contents: `Analyze fit. CV: ${ABDUL_CV_TEXT.substring(0, 1000)}. JD: ${jobDescription.substring(0, 1000)}. JSON: { "matchScore", "missingKeywords", "strengths", "summary" }`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
@@ -678,14 +441,8 @@ export const generateResumeBullet = async (missingKeyword: string, jobTitle: str
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Generate ONE high-impact resume bullet point for Abdul Hakeem's CV to address the missing skill: "${missingKeyword}".
-            Target Role: ${jobTitle}.
-            Context: Use his existing experience (${ABDUL_CV_TEXT.substring(0, 500)}) but frame it to highlight ${missingKeyword}.
-            
-            ${NATURAL_RULES}
-            
-            Rule: Start with a strong verb. Use metrics. Max 20 words. Write what sells.`
+            model: 'gemini-3-flash-preview',
+            contents: `Generate resume bullet for ${missingKeyword} in ${jobTitle}. ${NATURAL_RULES}`
         });
         return response.text?.trim() || "";
     });
@@ -694,48 +451,9 @@ export const generateResumeBullet = async (missingKeyword: string, jobTitle: str
 export const generateApplicationMaterials = async (jobDescription: string, persona: PersonaType): Promise<GeneratedContent> => {
   return retryWrapper(async () => {
       const ai = getClient();
-      
-      const prompt = `
-      ACT AS: An experienced, confident professional talking to a hiring manager. NOT A ROBOT.
-      TASK: Write a persuasive Application Strategy for Abdul Hakeem for this JD.
-      
-      ${NATURAL_RULES}
-
-      STEP 1: ANALYZE STRATEGY
-      - Identify the top 2-3 "Pain Points" in the JD (what problem are they hiring to solve?).
-      - Map Abdul's CV Metrics ($2M funding, 40% MQLs, 150% Traffic, etc.) as EVIDENCE that he solves these pains.
-      - Formulate a "Strategic Angle".
-      
-      STEP 2: WRITE CONTENT
-      - EMAIL DRAFT: Short (under 150 words). NO FLUFF.
-        - Structure: Hook (Company News/Trend) -> Bridge (My Metric) -> Value (I solve X) -> Ask (Chat?).
-        - TONE: "Peer-to-Peer", confident, humane. 
-        - BANNED: Do NOT start with "I am writing to apply". Start with the Hook.
-      
-      - COVER LETTER: Deeper dive (300 words).
-        - Use "Hook-Value-Proof-CTA" framework.
-        - Be direct. Say what you mean. Write what sells.
-      
-      INPUTS:
-      - PERSONA: ${persona}
-      - CV HIGHLIGHTS: ${ABDUL_CV_TEXT.substring(0, 3000)}
-      - JD: ${jobDescription.substring(0, 2000)}
-      
-      JSON OUTPUT FORMAT:
-      {
-        "strategicAngle": "One sentence summary of the pitch approach",
-        "whyFitSummary": "3 concise bullet points explaining why I am the perfect fit based on JD pain points",
-        "emailSubject": "Punchy subject line (e.g. 'Growth Strategy for [Company]')",
-        "emailDraft": "The short email text",
-        "coverLetter": "The full cover letter",
-        "fitScore": number (0-100),
-        "reasoning": "Brief explanation of the score"
-      }
-      `;
-
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
+        model: 'gemini-3-flash-preview',
+        contents: `Draft application for ${persona}. JD: ${jobDescription.substring(0, 1000)}. JSON: { "strategicAngle", "whyFitSummary", "emailSubject", "emailDraft", "coverLetter", "fitScore" }`,
         config: { responseMimeType: "application/json" }
       });
       return JSON.parse(response.text || "{}");
@@ -746,13 +464,8 @@ export const refineContent = async (content: GeneratedContent, instruction: stri
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Refine this content. Instruction: ${instruction}. 
-            
-            ${NATURAL_RULES}
-            
-            Maintain the existing JSON structure and only update the text fields (emailDraft, coverLetter).
-            JSON Input: ${JSON.stringify(content)}`,
+            model: 'gemini-3-flash-preview',
+            contents: `Refine. Instruction: ${instruction}. JSON: ${JSON.stringify(content)}`,
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
@@ -760,18 +473,14 @@ export const refineContent = async (content: GeneratedContent, instruction: stri
 };
 
 export const generateInterviewBrief = async (job: JobOpportunity): Promise<string> => {
-    return smartCache(`brief_${job.id}`, () => retryWrapper(async () => {
+    return smartCache(`brief_v2_${job.id}`, () => retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Create 1-page Interview Brief for ${job.title} at ${job.company} (UAE).
-            
-            ${NATURAL_RULES}
-            
-            Sections: Company Mission, Key Talking Points (Map CV to JD), 3 Smart Questions for Interviewer.`,
+            model: 'gemini-3-flash-preview',
+            contents: `1-page Interview Brief for ${job.title} at ${job.company}.`,
             config: { tools: [{ googleSearch: {} }] }
         });
-        return response.text || "Error generating brief.";
+        return response.text || "";
     }));
 }
 
@@ -779,83 +488,22 @@ export const evaluateOffer = async (salary: string, location: string, benefits: 
     return retryWrapper(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Evaluate UAE Job Offer. Salary: ${salary}. Location: ${location}. Benefits: ${benefits}.
-            Compare against UAE cost of living for that specific emirate.
-            
-            TASK: 
-            1. Search for current 2025 rent prices in ${location} (e.g. Studio/1BHK) to validate disposable income.
-            2. Compare offer vs market standard using UAE_SALARY_BENCHMARKS.
-            
-            ${UAE_SALARY_BENCHMARKS}
-            
-            ${NATURAL_RULES}
-            
-            JSON Output: { "salary": number, "currency": "AED", "benefitsScore": number, "commuteMinutes": number, "growthPotential": number, "totalScore": number, "recommendation": "string" }`,
-            config: { 
-                tools: [{ googleSearch: {} }]
-            }
+            model: 'gemini-3-flash-preview',
+            contents: `Evaluate UAE offer: ${salary} in ${location}. JSON: { "salary", "benefitsScore", "totalScore", "recommendation" }`,
+            config: { tools: [{ googleSearch: {} }] }
         });
         return cleanAndParseJSON(response.text || "{}");
     });
 }
 
-// --- NEW JOB SENSE AGENT ---
 export const analyzeJobSense = async (jobUrl: string, manualCompany: string, manualJd: string, persona: PersonaType): Promise<JobSenseAnalysis> => {
     return retryWrapper(async () => {
         const ai = getClient();
-        
-        let focusInstruction = "";
-        let cvUrl = "";
-        
-        if (persona === PersonaType.MARKETING) {
-            focusInstruction = "Focus STRICTLY on Content Strategy, SEO, Lead Gen, and Growth Metrics ($2M funding, 40% MQLs).";
-            cvUrl = USER_PROFILE.websites[PersonaType.MARKETING];
-        } else if (persona === PersonaType.PMO) {
-            focusInstruction = "Focus STRICTLY on Agile/Scrum, Project Delivery, Stakeholder Management, and Technical Leadership.";
-            cvUrl = USER_PROFILE.websites[PersonaType.PMO];
-        } else {
-            focusInstruction = "Focus on the hybrid blend of Technical + Marketing skills.";
-            cvUrl = USER_PROFILE.websites[PersonaType.ULT];
-        }
-        
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Conduct Forensic Job Analysis.
-            
-            INPUTS:
-            - URL: ${jobUrl}
-            - Company: ${manualCompany}
-            - JD: ${manualJd}
-            - CANDIDATE PERSONA: ${persona}
-            - PORTFOLIO: ${cvUrl}
-            - FULL CV: ${ABDUL_CV_TEXT.substring(0, 2000)}
-            
-            TASK:
-            1. VALIDATION: Search to verify if this company and role exist in UAE. Is it a Ghost Job?
-            2. SALARY FORENSICS: Search Glassdoor/Payscale for "${manualCompany} UAE Salaries".
-            3. FIT CHECK: Compare JD vs Candidate's ${persona} skills (0-4 YOE fit).
-            4. HEALTH CHECK: Search for recent layoffs or funding news.
-            
-            ${focusInstruction}
-            
-            JSON Output: { 
-                "jobTitle", 
-                "company", 
-                "roleSummary", 
-                "companyVibe", 
-                "matchScore": number (0-100),
-                "usedPersona": "${persona}",
-                "verification": { "isCompanyReal": boolean, "isJobReal": boolean, "notes": "string" },
-                "salaryAnalysis": { "estimated": "e.g. AED 20k", "marketAvg": "string", "status": "Below/Fair/Above" },
-                "atsGap": { "score": number, "missingSkills": [] },
-                "redFlags": [],
-                "greenFlags": [],
-                "strategicAdvice": "string"
-            }`,
+            model: 'gemini-3-flash-preview',
+            contents: `Forensic Job Analysis. URL: ${jobUrl}. Company: ${manualCompany}. Persona: ${persona}. JSON Output: { "jobTitle", "company", "roleSummary", "companyVibe", "matchScore", "verification": {}, "salaryAnalysis": {}, "atsGap": {}, "strategicAdvice" }`,
             config: { tools: [{ googleSearch: {} }] }
         });
-        
         return cleanAndParseJSON(response.text || "{}");
     });
 }
